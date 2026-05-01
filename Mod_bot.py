@@ -426,11 +426,14 @@ async def list_commands(ctx):
 @bot.command()
 @commands.is_owner()
 async def announce(ctx):
-    update_message = ("**Mod Bot Update**\n\n"
-                      "Here's what's new:\n"
-                      "- Improved\n"
-                      "- AI moderation is comming soon\n"
-                      )
+    update_message = ("**Filter Update**\n\n"
+                      "The word filter has been upgraded to be smarter at catching bypass attempts.\n\n"
+                      "It now automatically detects common tricks people use to get around the filter, including:\n"
+                      "- Replacing letters with symbols (`nigg@`, `f*ck`)\n"
+                      "- Using numbers instead of letters (`n1gga`, `b1tch`)\n"
+                      "- Spacing out letters (`n i g g a`)\n"
+                      "- Any combination of the above\n\n"
+                      "The rules haven't changed — same warnings, same timeouts. The filter is just harder to fool now.")
 
     sent = 0
     for guild in bot.guilds:
