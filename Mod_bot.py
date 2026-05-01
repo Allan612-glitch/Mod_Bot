@@ -249,7 +249,7 @@ async def on_message(message):
                 break
 
         if not detected:
-            detected = await ai_bypass_check(message.content, banned_words)
+            detected = await ai_bypass_check(message.content, naughty_words)
 
         if detected:
             num_warnings = increase_and_get_warning_count(
