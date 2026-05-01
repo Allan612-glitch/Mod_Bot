@@ -5,6 +5,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 import datetime
 import sqlite3
+from openai import AsyncOpenAI
 # Base directory
 Base_dir = os.path.dirname(os.path.abspath(__file__))
 # Add your naughty words here
@@ -12,6 +13,38 @@ Base_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
+
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+async def ai_bypass_check(message_content, banned_words):
+    if not banned_words:
+        return False
+    word_list = ", ".join(banned_words)
+    try:
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a content moderation assistant. "
+                        "Your job is to detect if a message contains any of the listed banned words, "
+                        "even if they are disguised using special characters, numbers, symbols, or misspellings. "
+                        "Reply with only 'yes' or 'no'."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": f"Banned words: {word_list}.\nMessage: '{message_content}'\nDoes this message contain any banned word in disguised form?"
+                }
+            ],
+            max_tokens=3,
+            temperature=0
+        )
+        answer = response.choices[0].message.content.strip().lower()
+        return answer == "yes"
+    except Exception:
+        return False
 
 def create_logs_table():
     conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
@@ -182,63 +215,62 @@ async def on_message(message):
 
     if not message.author.guild_permissions.moderate_members:
         naughty_words = get_naughty_words(message.guild.id)
+        detected = False
 
         for word in naughty_words:
             if word.lower() in message.content.lower():
-                num_warnings = increase_and_get_warning_count(
-                    message.author.id, message.guild.id
+                detected = True
+                break
+
+        if not detected:
+            detected = await ai_bypass_check(message.content, naughty_words)
+
+        if detected:
+            num_warnings = increase_and_get_warning_count(
+                message.author.id, message.guild.id
+            )
+            clean_content = (message.content[:100] + '..') if len(message.content) > 100 else message.content
+
+            if num_warnings >= 3:
+                log_infraction(message.author.id, str(message.author), message.guild.id, "Timeout (2hr)", clean_content)
+                await message.author.timeout(
+                    datetime.timedelta(minutes=120),
+                    reason="Exceeded naughty word limit (3+ warnings)",
                 )
+                await message.channel.send(
+                    f"{message.author.mention} has been timed out for 2 hours for saying too many naughty words."
+                )
+                await message.delete()
 
-                clean_content = (message.content[:100] + '..') if len(message.content) > 100 else message.content
-
-                if num_warnings >= 3:
-                    log_infraction(message.author.id, str(message.author), message.guild.id, "Timeout (2hr)", clean_content)
-
-                    await message.author.timeout(
-                        datetime.timedelta(minutes=120),
-                        reason="Exceeded naughty word limit (3+ warnings)",
+            elif num_warnings == 1:
+                log_infraction(message.author.id, str(message.author), message.guild.id, "Warning #1", clean_content)
+                try:
+                    await message.author.send(
+                        "Please do not say naughty words. You have been warned. One more time and you'll be timed out for an hour."
                     )
-                    await message.channel.send(
-                        f"{message.author.mention} has been timed out for 2 hours for saying too many naughty words."
+                except discord.Forbidden:
+                    pass
+                await message.channel.send(
+                    f"{message.author.mention} Please do not say naughty words."
+                )
+                await message.delete()
+
+            elif num_warnings == 2:
+                log_infraction(message.author.id, str(message.author), message.guild.id, "Timeout (1hr)", clean_content)
+                await message.author.timeout(
+                    datetime.timedelta(minutes=60),
+                    reason="Second naughty word warning",
+                )
+                try:
+                    await message.author.send(
+                        "You have been timed out for an hour for saying too many naughty words. One more time and you'll be timed out for 2 hours."
                     )
-                    await message.delete()
-                    break
-
-                if num_warnings == 1:
-                    log_infraction(message.author.id, str(message.author), message.guild.id, "Warning #1", clean_content)
-
-                    try:
-                        await message.author.send(
-                            "Please do not say naughty words. You have been warned. One more time and you'll be timed out for an hour."
-                        )
-                    except discord.Forbidden:
-                        pass
-
-                    await message.channel.send(
-                        f"{message.author.mention} Please do not say naughty words."
-                    )
-                    await message.delete()
-                    break
-
-                if num_warnings == 2:
-                    log_infraction(message.author.id, str(message.author), message.guild.id, "Timeout (1hr)", clean_content)
-
-                    await message.author.timeout(
-                        datetime.timedelta(minutes=60),
-                        reason="Second naughty word warning",
-                    )
-                    try:
-                        await message.author.send(
-                            "You have been timed out for an hour for saying too many naughty words. One more time and you'll be timed out for 2 hours."
-                        )
-                    except discord.Forbidden:
-                        pass
-
-                    await message.channel.send(
-                        f"{message.author.mention} has been timed out for an hour for saying too many naughty words."
-                    )
-                    await message.delete()
-                    break
+                except discord.Forbidden:
+                    pass
+                await message.channel.send(
+                    f"{message.author.mention} has been timed out for an hour for saying too many naughty words."
+                )
+                await message.delete()
 
     await bot.process_commands(message)
 
