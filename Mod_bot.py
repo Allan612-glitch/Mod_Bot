@@ -5,7 +5,6 @@ from discord import app_commands
 from dotenv import load_dotenv
 import datetime
 import sqlite3
-from google import genai
 # Base directory
 Base_dir = os.path.dirname(os.path.abspath(__file__))
 # Add your naughty words here
@@ -13,8 +12,6 @@ Base_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
-
-gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 LEET_MAP = str.maketrans({
     '@': 'a', '4': 'a',
@@ -32,30 +29,6 @@ def normalize_text(text):
 
 def remove_spaces(text):
     return text.lower().replace(' ', '')
-
-async def ai_bypass_check(message_content, banned_words):
-    if not banned_words:
-        return False
-    word_list = ", ".join(banned_words)
-    prompt = (
-        "You are a content moderation assistant. "
-        "Your job is to detect if a message contains any of the listed banned words, "
-        "even if they are disguised using special characters, numbers, symbols, or misspellings. "
-        "Reply with only 'yes' or 'no'.\n\n"
-        f"Banned words: {word_list}.\n"
-        f"Message: '{message_content}'\n"
-        "Does this message contain any banned word in disguised form?"
-    )
-    try:
-        response = await gemini_client.aio.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=prompt
-        )
-        answer = response.text.strip().lower()
-        return answer.startswith("yes")
-    except Exception as e:
-        print(f"[AI check error] {e}")
-        return False
 
 def create_logs_table():
     conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
@@ -240,9 +213,6 @@ async def on_message(message):
                 w in no_spaces_normalized):
                 detected = True
                 break
-
-        if not detected:
-            detected = await ai_bypass_check(message.content, naughty_words)
 
         if detected:
             num_warnings = increase_and_get_warning_count(
