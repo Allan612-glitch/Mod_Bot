@@ -5,7 +5,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 import datetime
 import sqlite3
-from openai import AsyncOpenAI
+from google import genai
 # Base directory
 Base_dir = os.path.dirname(os.path.abspath(__file__))
 # Add your naughty words here
@@ -14,35 +14,28 @@ load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
 
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 async def ai_bypass_check(message_content, banned_words):
     if not banned_words:
         return False
     word_list = ", ".join(banned_words)
+    prompt = (
+        "You are a content moderation assistant. "
+        "Your job is to detect if a message contains any of the listed banned words, "
+        "even if they are disguised using special characters, numbers, symbols, or misspellings. "
+        "Reply with only 'yes' or 'no'.\n\n"
+        f"Banned words: {word_list}.\n"
+        f"Message: '{message_content}'\n"
+        "Does this message contain any banned word in disguised form?"
+    )
     try:
-        response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a content moderation assistant. "
-                        "Your job is to detect if a message contains any of the listed banned words, "
-                        "even if they are disguised using special characters, numbers, symbols, or misspellings. "
-                        "Reply with only 'yes' or 'no'."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": f"Banned words: {word_list}.\nMessage: '{message_content}'\nDoes this message contain any banned word in disguised form?"
-                }
-            ],
-            max_tokens=3,
-            temperature=0
+        response = await gemini_client.aio.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=prompt
         )
-        answer = response.choices[0].message.content.strip().lower()
-        return answer == "yes"
+        answer = response.text.strip().lower()
+        return answer.startswith("yes")
     except Exception:
         return False
 
