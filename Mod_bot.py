@@ -48,7 +48,7 @@ async def ai_bypass_check(message_content, banned_words):
     )
     try:
         response = await gemini_client.aio.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.0-flash-lite",
             contents=prompt
         )
         answer = response.text.strip().lower()
