@@ -428,10 +428,9 @@ async def list_commands(ctx):
 async def announce(ctx):
     update_message = ("**Mod Bot Update**\n\n"
                       "Here's what's new:\n"
-                      "- Moderators are now immune to the banned word filter.\n"
-                      "- Improved error messages when a command is misused or used without permission.\n"
-                      "- The intro message is no longer sent to every channel when I join a server.\n\n"
-                      "Use `!commands` to see the full command list.")
+                      "- Improved\n"
+                      "- AI moderation is comming soon\n"
+                      )
 
     sent = 0
     for guild in bot.guilds:
