@@ -16,6 +16,20 @@ intents.message_content = True
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+LEET_MAP = str.maketrans({
+    '@': 'a', '4': 'a',
+    '!': 'i', '1': 'i',
+    '0': 'o',
+    '3': 'e',
+    '$': 's', '5': 's',
+    '7': 't', '+': 't',
+    '(': 'c',
+    '*': '',
+})
+
+def normalize_text(text):
+    return text.lower().translate(LEET_MAP)
+
 async def ai_bypass_check(message_content, banned_words):
     if not banned_words:
         return False
@@ -210,8 +224,13 @@ async def on_message(message):
         naughty_words = get_naughty_words(message.guild.id)
         detected = False
 
+        normalized_content = normalize_text(message.content)
+
         for word in naughty_words:
             if word.lower() in message.content.lower():
+                detected = True
+                break
+            if word.lower() in normalized_content:
                 detected = True
                 break
 
