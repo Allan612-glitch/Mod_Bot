@@ -30,6 +30,9 @@ LEET_MAP = str.maketrans({
 def normalize_text(text):
     return text.lower().translate(LEET_MAP)
 
+def remove_spaces(text):
+    return text.lower().replace(' ', '')
+
 async def ai_bypass_check(message_content, banned_words):
     if not banned_words:
         return False
@@ -50,7 +53,8 @@ async def ai_bypass_check(message_content, banned_words):
         )
         answer = response.text.strip().lower()
         return answer.startswith("yes")
-    except Exception:
+    except Exception as e:
+        print(f"[AI check error] {e}")
         return False
 
 def create_logs_table():
@@ -225,12 +229,15 @@ async def on_message(message):
         detected = False
 
         normalized_content = normalize_text(message.content)
+        no_spaces_content = remove_spaces(message.content)
+        no_spaces_normalized = remove_spaces(normalized_content)
 
         for word in naughty_words:
-            if word.lower() in message.content.lower():
-                detected = True
-                break
-            if word.lower() in normalized_content:
+            w = word.lower()
+            if (w in message.content.lower() or
+                w in normalized_content or
+                w in no_spaces_content or
+                w in no_spaces_normalized):
                 detected = True
                 break
 
