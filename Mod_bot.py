@@ -5,7 +5,7 @@ from discord import app_commands
 from dotenv import load_dotenv
 import datetime
 import sqlite3
-from openai import AsyncOpenAI
+# from openai import AsyncOpenAI
 # Base directory
 Base_dir = os.path.dirname(os.path.abspath(__file__))
 # Add your naughty words here
@@ -31,38 +31,40 @@ def normalize_text(text):
 def remove_spaces(text):
     return text.lower().replace(' ', '')
 
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-async def ai_bypass_check(message_content, banned_words):
-    if not banned_words:
-        return False
-    word_list = ", ".join(banned_words)
-    try:
-        response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a content moderation assistant. "
-                        "Your job is to detect if a message contains any of the listed banned words, "
-                        "even if they are disguised using special characters, numbers, symbols, or misspellings. "
-                        "Reply with only 'yes' or 'no'."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": f"Banned words: {word_list}.\nMessage: '{message_content}'\nDoes this message contain any banned word in disguised form?"
-                }
-            ],
-            max_tokens=3,
-            temperature=0
-        )
-        answer = response.choices[0].message.content.strip().lower()
-        return answer == "yes"
-    except Exception as e:
-        print(f"[AI check error] {e}")
-        return False
+# --- AI BYPASS CHECK (uncomment when OpenAI credits are available) ---
+# openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+#
+# async def ai_bypass_check(message_content, banned_words):
+#     if not banned_words:
+#         return False
+#     word_list = ", ".join(banned_words)
+#     try:
+#         response = await openai_client.chat.completions.create(
+#             model="gpt-4o-mini",
+#             messages=[
+#                 {
+#                     "role": "system",
+#                     "content": (
+#                         "You are a content moderation assistant. "
+#                         "Your job is to detect if a message contains any of the listed banned words, "
+#                         "even if they are disguised using special characters, numbers, symbols, or misspellings. "
+#                         "Reply with only 'yes' or 'no'."
+#                     )
+#                 },
+#                 {
+#                     "role": "user",
+#                     "content": f"Banned words: {word_list}.\nMessage: '{message_content}'\nDoes this message contain any banned word in disguised form?"
+#                 }
+#             ],
+#             max_tokens=3,
+#             temperature=0
+#         )
+#         answer = response.choices[0].message.content.strip().lower()
+#         return answer == "yes"
+#     except Exception as e:
+#         print(f"[AI check error] {e}")
+#         return False
+# --- END AI BYPASS CHECK ---
 
 def create_logs_table():
     conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
@@ -248,8 +250,8 @@ async def on_message(message):
                 detected = True
                 break
 
-        if not detected:
-            detected = await ai_bypass_check(message.content, naughty_words)
+        # if not detected:  # uncomment when OpenAI credits are available
+        #     detected = await ai_bypass_check(message.content, naughty_words)
 
         if detected:
             num_warnings = increase_and_get_warning_count(
