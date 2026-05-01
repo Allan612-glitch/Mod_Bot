@@ -362,6 +362,36 @@ async def list_commands(ctx):
                     "`!clearwarnings <member>` - Clear a user's warnings (Moderators only)\n")
     await ctx.send(commands_list)
     
+#one-time announcement to all servers (owner only)
+@bot.command()
+@commands.is_owner()
+async def announce(ctx):
+    update_message = ("**Mod Bot Update**\n\n"
+                      "Here's what's new:\n"
+                      "- Moderators are now immune to the banned word filter.\n"
+                      "- Improved error messages when a command is misused or used without permission.\n"
+                      "- The intro message is no longer sent to every channel when I join a server.\n\n"
+                      "Use `!commands` to see the full command list.")
+
+    sent = 0
+    for guild in bot.guilds:
+        target_channel = None
+        if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+            target_channel = guild.system_channel
+        else:
+            for channel in guild.text_channels:
+                if channel.permissions_for(guild.me).send_messages:
+                    target_channel = channel
+                    break
+
+        if target_channel:
+            try:
+                await target_channel.send(update_message)
+                sent += 1
+            except discord.Forbidden:
+                pass
+
+    await ctx.send(f"Update message sent to {sent} server(s).")
 
 #about section
 @bot.command()
@@ -380,6 +410,6 @@ async def about(ctx):
 
 
 
-TOKEN = os.getenv("DISCORD_TOKEN")
+TOKEN = os.getenv("DISCORD_TOKEN_TEST")
 
 bot.run(TOKEN)
