@@ -442,12 +442,6 @@ async def list_commands(ctx):
 async def announce(ctx):
     update_message = ("**Mod Bot Update**\n\n"
                       "Here's what's new:\n\n"
-                      "**Smarter Word Filter**\n"
-                      "The filter now catches common bypass attempts, including:\n"
-                      "- Replacing letters with symbols (`nigg@`, `f*ck`)\n"
-                      "- Using numbers instead of letters (`n1gga`, `b1tch`)\n"
-                      "- Spacing out letters (`n i g g a`)\n"
-                      "- Any combination of the above\n\n"
                       "**Better Error Messages**\n"
                       "If I'm unable to timeout a user due to role hierarchy, I'll now let you know in the channel and explain how to fix it.\n\n"
                       "The rules haven't changed — same warnings, same timeouts. Everything is just more reliable now.")
@@ -471,6 +465,16 @@ async def announce(ctx):
                 pass
 
     await ctx.send(f"Update message sent to {sent} server(s).")
+
+#list all servers the bot is in (owner only)
+@bot.command()
+@commands.is_owner()
+async def servers(ctx):
+    if not bot.guilds:
+        await ctx.send("I am not in any servers.")
+        return
+    server_list = "\n".join(f"{i+1}. {guild.name} ({guild.member_count} members)" for i, guild in enumerate(bot.guilds))
+    await ctx.send(f"**Servers I'm in ({len(bot.guilds)}):**\n{server_list}")
 
 #about section
 @bot.command()
