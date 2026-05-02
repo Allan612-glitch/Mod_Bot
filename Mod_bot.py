@@ -261,14 +261,21 @@ async def on_message(message):
 
             if num_warnings >= 3:
                 log_infraction(message.author.id, str(message.author), message.guild.id, "Timeout (2hr)", clean_content)
-                await message.author.timeout(
-                    datetime.timedelta(minutes=120),
-                    reason="Exceeded naughty word limit (3+ warnings)",
-                )
-                await message.channel.send(
-                    f"{message.author.mention} has been timed out for 2 hours for saying too many naughty words."
-                )
-                await message.delete()
+                try:
+                    await message.author.timeout(
+                        datetime.timedelta(minutes=120),
+                        reason="Exceeded naughty word limit (3+ warnings)",
+                    )
+                    await message.channel.send(
+                        f"{message.author.mention} has been timed out for 2 hours for saying too many naughty words."
+                    )
+                    await message.delete()
+                except discord.Forbidden:
+                    await message.channel.send(
+                        f"⚠️ I was unable to timeout {message.author.mention}. "
+                        f"Please make sure my role is placed **above** all other roles in **Server Settings > Roles**. "
+                        f"An admin needs to fix this for me to enforce timeouts properly."
+                    )
 
             elif num_warnings == 1:
                 log_infraction(message.author.id, str(message.author), message.guild.id, "Warning #1", clean_content)
@@ -285,20 +292,27 @@ async def on_message(message):
 
             elif num_warnings == 2:
                 log_infraction(message.author.id, str(message.author), message.guild.id, "Timeout (1hr)", clean_content)
-                await message.author.timeout(
-                    datetime.timedelta(minutes=60),
-                    reason="Second naughty word warning",
-                )
                 try:
-                    await message.author.send(
-                        "You have been timed out for an hour for saying too many naughty words. One more time and you'll be timed out for 2 hours."
+                    await message.author.timeout(
+                        datetime.timedelta(minutes=60),
+                        reason="Second naughty word warning",
                     )
+                    try:
+                        await message.author.send(
+                            "You have been timed out for an hour for saying too many naughty words. One more time and you'll be timed out for 2 hours."
+                        )
+                    except discord.Forbidden:
+                        pass
+                    await message.channel.send(
+                        f"{message.author.mention} has been timed out for an hour for saying too many naughty words."
+                    )
+                    await message.delete()
                 except discord.Forbidden:
-                    pass
-                await message.channel.send(
-                    f"{message.author.mention} has been timed out for an hour for saying too many naughty words."
-                )
-                await message.delete()
+                    await message.channel.send(
+                        f"⚠️ I was unable to timeout {message.author.mention}. "
+                        f"Please make sure my role is placed **above** all other roles in **Server Settings > Roles**. "
+                        f"An admin needs to fix this for me to enforce timeouts properly."
+                    )
 
     await bot.process_commands(message)
 
@@ -427,13 +441,14 @@ async def list_commands(ctx):
 @commands.is_owner()
 async def announce(ctx):
     update_message = ("**Filter Update**\n\n"
-                      "The word filter has been upgraded to be smarter at catching bypass attempts.\n\n"
-                      "It now automatically detects common tricks people use to get around the filter, including:\n"
-                      "- Replacing letters with symbols (`nigg@`, `f*ck`)\n"
-                      "- Using numbers instead of letters (`n1gga`, `b1tch`)\n"
-                      "- Spacing out letters (`n i g g a`)\n"
-                      "- Any combination of the above\n\n"
-                      "The rules haven't changed — same warnings, same timeouts. The filter is just harder to fool now.")
+          "The word filter has been upgraded to be smarter at catching bypass attempts.\n\n"
+          "It now automatically detects common tricks people use to get around the filter, including:\n"
+          "- Replacing letters with symbols (`nigg@`, `f*ck`)\n"
+          "- Using numbers instead of letters (`n1gga`, `b1tch`)\n"
+          "- Spacing out letters (`n i g g a`)\n"
+          "- Any combination of the above\n"
+            "- AI detection is also being tested to catch more subtle bypass attempts.\n\n"
+          "The rules haven't changed — same warnings, same timeouts. The filter is just harder to fool now.")
 
     sent = 0
     for guild in bot.guilds:
