@@ -443,7 +443,10 @@ async def announce(ctx):
     update_message = ("**Mod Bot Update**\n\n"
                       "Here's what's new:\n\n"
                       "**Better Error Messages**\n"
-                      "If I'm unable to timeout a user due to role hierarchy, I'll now let you know in the channel and explain how to fix it.\n\n"
+                      "If I'm unable to timeout a user due to role hierarchy, I'll now let you know in the channel and explain how to fix it.\n"
+                      "It came to my attention that some servers were struggling with the bot setup so this is how do set it up\n"
+                      "1. Make sure the bot is placed above all other roles in the server settings.\n"
+                      "2. Make sure the bot has the necessary permissions to send messages and timeout members.\n\n"
                       "The rules haven't changed — same warnings, same timeouts. Everything is just more reliable now.")
 
     sent = 0
@@ -475,7 +478,7 @@ async def servers(ctx):
         return
     server_list = "\n".join(f"{i+1}. {guild.name} ({guild.member_count} members)" for i, guild in enumerate(bot.guilds))
     await ctx.send(f"**Servers I'm in ({len(bot.guilds)}):**\n{server_list}")
-
+    
 #about section
 @bot.command()
 async def about(ctx):
