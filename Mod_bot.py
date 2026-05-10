@@ -336,14 +336,14 @@ async def on_message(message):
 #one-time announcement to all servers (owner only)
 @bot.command()
 @commands.is_owner()
-async def announce(ctx):
+async def announc(ctx):
     embed = discord.Embed(
         title="Mod Bot Update",
         color=discord.Color.blue()
     )
     embed.add_field(
         name="Slash Commands",
-        value="All commands are now available with `/` and support autocomplete. Just type `/` to see the full list.",
+        value="All commands are now available with `/` and support autocomplete. Just type `/` to see the full list. ! prefix no longer works so all commands should begin with /\nFor example: `/addword badword` or `/clearwarnings @user`",
         inline=False
     )
     embed.add_field(
@@ -358,7 +358,7 @@ async def announce(ctx):
     )
     embed.add_field(
         name="🔗 Links",
-        value="⬆️ [Vote for the bot](https://top.gg/bot/YOURBOTNUMBER)\n📩 [Invite the bot](https://discord.com/oauth2/authorize?client_id=YOURCLIENTID&permissions=YOURPERMISSIONS&scope=bot)",
+        value="⬆️ [Vote for the bot](https://top.gg/bot/1482092741352624228?s=0f59ebc3a1c91)\n📩 [Invite the bot](https://discord.com/oauth2/authorize?client_id=1482092741352624228&permissions=4504974285417526&integration_type=0&scope=bot)",
         inline=False
     )
 
