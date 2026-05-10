@@ -16,7 +16,7 @@ intents.message_content = True
 
 LEET_MAP = str.maketrans({
     '@': 'a', '4': 'a',
-    '!': 'i', '1': 'i',
+    '!': 'i', '1': 'i', 'l' : 'i',
     '0': 'o',
     '3': 'e',
     '$': 's', '5': 's',
