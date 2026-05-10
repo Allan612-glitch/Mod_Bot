@@ -188,6 +188,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f"Logged in as {bot.user.name}, bot is online")
 
 @bot.event
@@ -495,6 +496,111 @@ async def about(ctx):
 
 
 
+
+# ---- SLASH COMMANDS ----
+
+@bot.tree.command(name="addword", description="Add a banned word to this server's list (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_addword(interaction: discord.Interaction, word: str):
+    conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO naughty_words (word, guild_id) VALUES (?, ?)", (word.lower(), interaction.guild.id))
+        conn.commit()
+        await interaction.response.send_message(f"Added '{word}' to the banned words list for this server.")
+    except sqlite3.IntegrityError:
+        await interaction.response.send_message(f"'{word}' is already in the banned words list.")
+    finally:
+        conn.close()
+
+@bot.tree.command(name="removeword", description="Remove a banned word from this server's list (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_removeword(interaction: discord.Interaction, word: str):
+    conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM naughty_words WHERE word = ? AND guild_id = ?", (word.lower(), interaction.guild.id))
+    conn.commit()
+    removed = cursor.rowcount
+    conn.close()
+    if removed:
+        await interaction.response.send_message(f"Removed '{word}' from the banned words list.")
+    else:
+        await interaction.response.send_message(f"'{word}' is not in the banned words list.")
+
+@bot.tree.command(name="listwords", description="See all banned words for this server (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_listwords(interaction: discord.Interaction):
+    words = get_naughty_words(interaction.guild.id)
+    if not words:
+        await interaction.response.send_message("There are currently no banned words in this server.")
+        return
+    word_list_string = ", ".join(f"`{word}`" for word in words)
+    embed = discord.Embed(title="Banned Words List", description=word_list_string, color=discord.Color.red())
+    await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="clearwarnings", description="Clear a user's warnings (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_clearwarnings(interaction: discord.Interaction, member: discord.Member):
+    conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users_per_guild WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
+    conn.commit()
+    conn.close()
+    await interaction.response.send_message(f"Warnings for {member.mention} have been cleared.")
+
+@bot.tree.command(name="logs", description="View recent infractions for a user (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_logs(interaction: discord.Interaction, member: discord.Member):
+    conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT infraction_type, message_content, timestamp
+        FROM mod_logs WHERE user_id = ? AND guild_id = ?
+        ORDER BY timestamp DESC LIMIT 10
+    """, (member.id, interaction.guild.id))
+    rows = cursor.fetchall()
+    conn.close()
+    if not rows:
+        await interaction.response.send_message(f"No logs found for {member.display_name}.")
+        return
+    log_text = f"**Recent logs for {member.mention}:**\n"
+    for infraction_type, content, time in rows:
+        clean_time = time[:19]
+        log_text += f"• `[{clean_time}]` **{infraction_type}**: \"{content}\"\n"
+    await interaction.response.send_message(log_text)
+
+@bot.tree.command(name="about", description="Learn about this bot")
+async def slash_about(interaction: discord.Interaction):
+    about_message = ("**Moderation Bot**\n"
+                     "This bot helps moderate the server by filtering banned words "
+                     "and issuing warnings to users who use them.\n\n"
+                     "**How it works:**\n"
+                     "- If a user says a banned word, they get a warning.\n"
+                     "- 2nd warning = 1 hour timeout.\n"
+                     "- 3rd warning = 2 hour timeout.\n\n"
+                     "Use `/commands` to see the full list of commands.")
+    await interaction.response.send_message(about_message)
+
+@bot.tree.command(name="commands", description="See the full list of bot commands")
+async def slash_list_commands(interaction: discord.Interaction):
+    commands_list = ("**Bot Command List**\n\n"
+                     "`/about` - Shows information about the bot\n"
+                     "`/commands` - Shows this command list\n"
+                     "`/addword <word>` - Add a banned word (Moderators only)\n"
+                     "`/removeword <word>` - Remove a banned word (Moderators only)\n"
+                     "`/listwords` - See all banned words (Moderators only)\n"
+                     "`/clearwarnings <member>` - Clear a user's warnings (Moderators only)\n"
+                     "`/logs <member>` - View a user's infractions (Moderators only)\n")
+    await interaction.response.send_message(commands_list)
+
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message("You do not have permission to use this command.")
+    else:
+        await interaction.response.send_message("Something went wrong. Please try again.")
+
+# ---- END SLASH COMMANDS ----
 
 TOKEN = os.getenv("DISCORD_TOKEN_TEST")
 
