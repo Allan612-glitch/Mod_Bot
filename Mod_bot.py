@@ -337,16 +337,30 @@ async def on_message(message):
 @bot.command()
 @commands.is_owner()
 async def announce(ctx):
-    update_message = ("**Mod Bot Update**\n\n"
-                      "Here's what's new:\n\n"
-                      "**Slash Commands**\n"
-                      "All commands are now available with `/` and support autocomplete. Just type `/` to see the full list.\n\n"
-                      "**DMs**\n"
-                      "DMing the bot does nothing — all commands must be used in a server.\n\n"
-                      "The rules haven't changed — same warnings, same timeouts. Everything is just more reliable now.\n\n"
-                      "🔗 **Links**\n"
-                      "⬆️ Vote for the bot: https://top.gg/bot/YOURBOTNUMBER\n"
-                      "📩 Invite the bot: https://discord.com/oauth2/authorize?client_id=YOURCLIENTID&permissions=YOURPERMISSIONS&scope=bot")
+    embed = discord.Embed(
+        title="Mod Bot Update",
+        color=discord.Color.blue()
+    )
+    embed.add_field(
+        name="Slash Commands",
+        value="All commands are now available with `/` and support autocomplete. Just type `/` to see the full list.",
+        inline=False
+    )
+    embed.add_field(
+        name="DMs",
+        value="DMing the bot does nothing — all commands must be used in a server.",
+        inline=False
+    )
+    embed.add_field(
+        name="",
+        value="The rules haven't changed — same warnings, same timeouts. Everything is just more reliable now.",
+        inline=False
+    )
+    embed.add_field(
+        name="🔗 Links",
+        value="⬆️ [Vote for the bot](https://top.gg/bot/YOURBOTNUMBER)\n📩 [Invite the bot](https://discord.com/oauth2/authorize?client_id=YOURCLIENTID&permissions=YOURPERMISSIONS&scope=bot)",
+        inline=False
+    )
 
     sent = 0
     for guild in bot.guilds:
@@ -361,7 +375,7 @@ async def announce(ctx):
 
         if target_channel:
             try:
-                await target_channel.send(update_message)
+                await target_channel.send(embed=embed)
                 sent += 1
             except discord.Forbidden:
                 pass
