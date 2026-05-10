@@ -234,6 +234,9 @@ async def on_message(message):
     if message.author.id == bot.user.id:
         return
 
+    if message.guild is None:
+        return
+
     if not message.author.guild_permissions.moderate_members:
         naughty_words = get_naughty_words(message.guild.id)
         detected = False
