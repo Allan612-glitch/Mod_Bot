@@ -339,11 +339,15 @@ async def on_message(message):
 async def announce(ctx):
     update_message = ("**Mod Bot Update**\n\n"
                       "Here's what's new:\n\n"
-                      "**Better Error Messages**\n"
-                      "If I'm unable to timeout a user due to role hierarchy, I'll now let you know in the channel and explain how to fix it.\n"
-                      "It came to my attention that some servers were struggling with the bot setup so this is how do set it up\n"
-                      "1. Make sure the bot is placed above all other roles in the server settings.\n"
-                      "2. Make sure the bot has the necessary permissions to send messages and timeout members.\n\n"
+                      "**Slash Commands**\n"
+                      "All commands are now available with `/` and support autocomplete. Just type `/` to see the full list.\n\n"
+                      "**Smarter Word Filter**\n"
+                      "The filter now catches common bypass attempts, including:\n"
+                      "- Replacing letters with symbols (`nigg@`, `f*ck`)\n"
+                      "- Using numbers instead of letters (`n1gga`, `b1tch`)\n"
+                      "- Spacing out letters (`n i g g a`)\n\n"
+                      "**DMs**\n"
+                      "DMing the bot does nothing — all commands must be used in a server.\n\n"
                       "The rules haven't changed — same warnings, same timeouts. Everything is just more reliable now.")
 
     sent = 0
