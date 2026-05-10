@@ -1,6 +1,6 @@
 import os
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from discord import app_commands
 from dotenv import load_dotenv
 import datetime
@@ -186,9 +186,22 @@ def get_naughty_words(guild_id):
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 
+@tasks.loop(hours=24)
+async def cleanup_old_logs():
+    cutoff = datetime.datetime.now() - datetime.timedelta(days=30)
+    conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM mod_logs WHERE timestamp < ?", (cutoff,))
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    if deleted:
+        print(f"[Log Cleanup] Deleted {deleted} log(s) older than 30 days.")
+
 @bot.event
 async def on_ready():
     await bot.tree.sync()
+    cleanup_old_logs.start()
     print(f"Logged in as {bot.user.name}, bot is online")
 
 @bot.event
