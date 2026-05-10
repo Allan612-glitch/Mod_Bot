@@ -211,7 +211,7 @@ async def on_command_error(ctx, error):
     elif isinstance(error, commands.MemberNotFound):
         await ctx.send("Member not found.")
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"Missing argument: `{error.param.name}`. Use `!commands` to see how to use it.")
+        await ctx.send(f"Missing argument: `{error.param.name}`. Use `/commands` to see how to use it.")
     elif isinstance(error, commands.CommandNotFound):
         return
     else:
@@ -223,8 +223,8 @@ async def on_guild_join(guild):
     intro_message = ("Hello! I am a moderation bot built by Allancash123.\n"
                      "My main purpose is to assist with moderation tasks.\n"
                      "I automatically filter banned words and warn users.\n\n"
-                     "Use `!about` to learn about me.\n"
-                     "Use `!commands` to see my command list.")
+                     "Use `/about` to learn about me.\n"
+                     "Use `/commands` to see my command list.")
 
     target_channel = None
 
