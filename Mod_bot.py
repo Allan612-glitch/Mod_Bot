@@ -341,14 +341,12 @@ async def announce(ctx):
                       "Here's what's new:\n\n"
                       "**Slash Commands**\n"
                       "All commands are now available with `/` and support autocomplete. Just type `/` to see the full list.\n\n"
-                      "**Smarter Word Filter**\n"
-                      "The filter now catches common bypass attempts, including:\n"
-                      "- Replacing letters with symbols (`nigg@`, `f*ck`)\n"
-                      "- Using numbers instead of letters (`n1gga`, `b1tch`)\n"
-                      "- Spacing out letters (`n i g g a`)\n\n"
                       "**DMs**\n"
                       "DMing the bot does nothing — all commands must be used in a server.\n\n"
-                      "The rules haven't changed — same warnings, same timeouts. Everything is just more reliable now.")
+                      "The rules haven't changed — same warnings, same timeouts. Everything is just more reliable now.\n\n"
+                      "🔗 **Links**\n"
+                      "⬆️ Vote for the bot: https://top.gg/bot/YOURBOTNUMBER\n"
+                      "📩 Invite the bot: https://discord.com/oauth2/authorize?client_id=YOURCLIENTID&permissions=YOURPERMISSIONS&scope=bot")
 
     sent = 0
     for guild in bot.guilds:
