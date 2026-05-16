@@ -247,7 +247,8 @@ async def on_message(message):
     if message.author.id == bot.user.id:
         return
 
-    if message.guild is None:
+    if message.guild is None or not isinstance(message.author, discord.Member):
+        await bot.process_commands(message)
         return
 
     if not message.author.guild_permissions.moderate_members:
