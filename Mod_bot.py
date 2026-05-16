@@ -13,6 +13,7 @@ Base_dir = os.path.dirname(os.path.abspath(__file__))
 load_dotenv()
 intents = discord.Intents.default()
 intents.message_content = True
+intents.members = True
 
 LEET_MAP = str.maketrans({
     '@': 'a', '4': 'a',
