@@ -384,6 +384,42 @@ async def announc(ctx):
 
     await ctx.send(f"Update message sent to {sent} server(s).")
 
+#feedback form announcement to all servers (owner only)
+@bot.command()
+@commands.is_owner()
+async def survey(ctx):
+    embed = discord.Embed(
+        title="We Want Your Feedback!",
+        description="Got a suggestion or running into an issue with Mod Bot? We'd love to hear from you — it helps make the bot better for everyone.",
+        color=discord.Color.green()
+    )
+    embed.add_field(
+        name="📋 Fill out the form",
+        value="[Click here to share your feedback](https://forms.google.com/YOURFORMLINK)",
+        inline=False
+    )
+    embed.set_footer(text="It only takes a minute — thank you for helping improve Mod Bot!")
+
+    sent = 0
+    for guild in bot.guilds:
+        target_channel = None
+        if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+            target_channel = guild.system_channel
+        else:
+            for channel in guild.text_channels:
+                if channel.permissions_for(guild.me).send_messages:
+                    target_channel = channel
+                    break
+
+        if target_channel:
+            try:
+                await target_channel.send(embed=embed)
+                sent += 1
+            except discord.Forbidden:
+                pass
+
+    await ctx.send(f"Feedback announcement sent to {sent} server(s).")
+
 #list all servers the bot is in (owner only)
 @bot.command()
 @commands.is_owner()
