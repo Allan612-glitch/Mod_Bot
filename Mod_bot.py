@@ -67,6 +67,41 @@ def remove_spaces(text):
 #         return False
 # --- END AI BYPASS CHECK ---
 
+def create_polls_table():
+    conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS poll_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER,
+            message_id INTEGER
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def save_poll_message(channel_id, message_id):
+    conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO poll_messages (channel_id, message_id) VALUES (?, ?)", (channel_id, message_id))
+    conn.commit()
+    conn.close()
+
+def get_poll_messages():
+    conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT channel_id, message_id FROM poll_messages")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def clear_poll_messages():
+    conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM poll_messages")
+    conn.commit()
+    conn.close()
+
 def create_logs_table():
     conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
     cursor = conn.cursor()
@@ -203,6 +238,7 @@ async def cleanup_old_logs():
 async def on_ready():
     await bot.tree.sync()
     cleanup_old_logs.start()
+    create_polls_table()
     print(f"Logged in as {bot.user.name}, bot is online")
 
 @bot.event
@@ -435,12 +471,60 @@ async def pollannounce(ctx):
 
         if target_channel:
             try:
-                await target_channel.send(poll=poll)
+                msg = await target_channel.send(poll=poll)
+                save_poll_message(target_channel.id, msg.id)
                 sent += 1
             except discord.Forbidden:
                 pass
 
     await ctx.send(f"Poll sent to {sent} server(s).")
+
+#collect and display poll results from all servers (owner only)
+@bot.command()
+@commands.is_owner()
+async def pollresults(ctx):
+    records = get_poll_messages()
+    if not records:
+        await ctx.send("No poll messages found. Run `!pollannounce` first.")
+        return
+
+    totals = {}
+    checked = 0
+    failed = 0
+
+    for channel_id, message_id in records:
+        channel = bot.get_channel(channel_id)
+        if not channel:
+            failed += 1
+            continue
+        try:
+            message = await channel.fetch_message(message_id)
+            if message.poll:
+                for answer in message.poll.answers:
+                    label = answer.text
+                    totals[label] = totals.get(label, 0) + answer.vote_count
+                checked += 1
+        except (discord.NotFound, discord.Forbidden):
+            failed += 1
+
+    if not totals:
+        await ctx.send("Could not retrieve any poll results.")
+        return
+
+    embed = discord.Embed(
+        title="Poll Results — 4th Warning Ban Feature",
+        description=f"Collected from {checked} server(s).",
+        color=discord.Color.blue()
+    )
+    total_votes = sum(totals.values())
+    for label, count in totals.items():
+        percent = round((count / total_votes) * 100) if total_votes > 0 else 0
+        embed.add_field(name=label, value=f"{count} vote(s) — {percent}%", inline=False)
+
+    if failed:
+        embed.set_footer(text=f"{failed} server(s) could not be reached.")
+
+    await ctx.send(embed=embed)
 
 #list all servers the bot is in (owner only)
 @bot.command()
