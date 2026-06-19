@@ -344,18 +344,8 @@ async def announc(ctx):
         color=discord.Color.blue()
     )
     embed.add_field(
-        name="Slash Commands",
-        value="All commands are now available with `/` and support autocomplete. Just type `/` to see the full list. ! prefix no longer works so all commands should begin with /\nFor example: `/addword badword` or `/clearwarnings @user`",
-        inline=False
-    )
-    embed.add_field(
-        name="DMs",
-        value="DMing the bot does nothing — all commands must be used in a server.",
-        inline=False
-    )
-    embed.add_field(
-        name="",
-        value="The rules haven't changed — same warnings, same timeouts. Everything is just more reliable now.",
+        name="Mod bot voting",
+        value="Mod bot has been growing rapidly but then i still need your help to get it to the top. Please vote for mod bot using the link below so we can have one of the biggest moderator bots in the discord community.\nThank you.",
         inline=False
     )
     embed.add_field(
@@ -390,12 +380,12 @@ async def announc(ctx):
 async def survey(ctx):
     embed = discord.Embed(
         title="We Want Your Feedback!",
-        description="Got a suggestion or running into an issue with Mod Bot? We'd love to hear from you — it helps make the bot better for everyone.",
+        description="Got a suggestion or running into an issue with Mod Bot? We'd love to hear from you it helps make the bot better for everyone.",
         color=discord.Color.green()
     )
     embed.add_field(
         name="📋 Fill out the form",
-        value="[Click here to share your feedback](https://forms.google.com/YOURFORMLINK)",
+        value="[Click here to share your feedback](https://docs.google.com/forms/d/e/1FAIpQLSe-R37QQdaBwu3tefEsRuxYNuc00soZ6BWcp-rNo8eXYn4dNw/viewform?usp=dialog)",
         inline=False
     )
     embed.set_footer(text="It only takes a minute — thank you for helping improve Mod Bot!")
