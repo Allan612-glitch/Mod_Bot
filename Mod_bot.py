@@ -479,12 +479,6 @@ async def pollannounce(ctx):
 
     await ctx.send(f"Poll sent to {sent} server(s).")
 
-#manually register an existing poll message (owner only)
-@bot.command()
-@commands.is_owner()
-async def addpoll(ctx, channel_id: int, message_id: int):
-    save_poll_message(channel_id, message_id)
-    await ctx.send(f"Registered poll message `{message_id}` in channel `{channel_id}`.")
 
 
 #collect and display poll results from all servers (owner only)
