@@ -486,6 +486,26 @@ async def addpoll(ctx, channel_id: int, message_id: int):
     save_poll_message(channel_id, message_id)
     await ctx.send(f"Registered poll message `{message_id}` in channel `{channel_id}`.")
 
+#auto-scan all servers for existing bot poll messages (owner only)
+@bot.command()
+@commands.is_owner()
+async def findpolls(ctx):
+    await ctx.send("Scanning all servers for poll messages, this may take a moment...")
+    found = 0
+    for guild in bot.guilds:
+        for channel in guild.text_channels:
+            if not channel.permissions_for(guild.me).read_message_history:
+                continue
+            try:
+                async for message in channel.history(limit=50):
+                    if message.author.id == bot.user.id and message.poll:
+                        save_poll_message(channel.id, message.id)
+                        found += 1
+                        break
+            except discord.Forbidden:
+                continue
+    await ctx.send(f"Done. Found and registered {found} poll message(s) across all servers. Run `!pollresults` to see the results.")
+
 #collect and display poll results from all servers (owner only)
 @bot.command()
 @commands.is_owner()
