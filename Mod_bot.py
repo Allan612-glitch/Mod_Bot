@@ -410,6 +410,38 @@ async def survey(ctx):
 
     await ctx.send(f"Feedback announcement sent to {sent} server(s).")
 
+#poll announcement to all servers (owner only)
+@bot.command()
+@commands.is_owner()
+async def pollannounce(ctx):
+    poll = discord.Poll(
+        question="Should Mod Bot add a 4th warning that bans the user from the server?",
+        duration=datetime.timedelta(days=7)
+    )
+    poll.add_answer(text="Yes, add it!", emoji="✅")
+    poll.add_answer(text="No, keep it at 3 warnings", emoji="❌")
+    poll.add_answer(text="Yes, but make it optional per server", emoji="⚙️")
+
+    sent = 0
+    for guild in bot.guilds:
+        target_channel = None
+        if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+            target_channel = guild.system_channel
+        else:
+            for channel in guild.text_channels:
+                if channel.permissions_for(guild.me).send_messages:
+                    target_channel = channel
+                    break
+
+        if target_channel:
+            try:
+                await target_channel.send(poll=poll)
+                sent += 1
+            except discord.Forbidden:
+                pass
+
+    await ctx.send(f"Poll sent to {sent} server(s).")
+
 #list all servers the bot is in (owner only)
 @bot.command()
 @commands.is_owner()
