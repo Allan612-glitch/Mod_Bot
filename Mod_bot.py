@@ -510,9 +510,24 @@ async def findpolls(ctx):
 @bot.command()
 @commands.is_owner()
 async def pollresults(ctx):
+    await ctx.send("Scanning all servers for poll messages...")
+
+    clear_poll_messages()
+    for guild in bot.guilds:
+        for channel in guild.text_channels:
+            if not channel.permissions_for(guild.me).read_message_history:
+                continue
+            try:
+                async for message in channel.history(limit=50):
+                    if message.author.id == bot.user.id and message.poll:
+                        save_poll_message(channel.id, message.id)
+                        break
+            except discord.Forbidden:
+                continue
+
     records = get_poll_messages()
     if not records:
-        await ctx.send("No poll messages found. Run `!pollannounce` first.")
+        await ctx.send("No poll messages found.")
         return
 
     totals = {}
