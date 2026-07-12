@@ -386,7 +386,7 @@ async def on_message(message):
                         f"Please make sure my role is placed **above** all other roles in **Server Settings > Roles**."
                     )
 
-            elif num_warnings == 3:
+            elif num_warnings >= 3:
                 log_infraction(message.author.id, str(message.author), message.guild.id, "Timeout (2hr)", clean_content)
                 try:
                     await message.author.timeout(
