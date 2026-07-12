@@ -453,8 +453,16 @@ async def announc(ctx):
         color=discord.Color.blue()
     )
     embed.add_field(
-        name="Mod bot voting",
-        value="Mod bot has been growing rapidly but then i still need your help to get it to the top. Please vote for mod bot using the link below so we can have one of the biggest moderator bots in the discord community.\nThank you.",
+        name="🔨 Optional Ban Feature",
+        value=(
+            "Mod Bot now supports an optional **4th warning ban**.\n\n"
+            "How it works:\n"
+            "• 1st warning — User is warned\n"
+            "• 2nd warning — 1 hour timeout\n"
+            "• 3rd warning — 2 hour timeout\n"
+            "• 4th warning — **Ban** *(if enabled)*\n\n"
+            "This is **off by default**. Moderators can enable it with `/banfeature`."
+        ),
         inline=False
     )
     embed.add_field(
