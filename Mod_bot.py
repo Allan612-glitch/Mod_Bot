@@ -160,9 +160,41 @@ def naughty_words_table():
     conn.commit()
     conn.close()
 
+def create_guild_settings_table():
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS guild_settings (
+            guild_id INTEGER PRIMARY KEY,
+            ban_feature INTEGER DEFAULT 0
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def get_ban_feature_enabled(guild_id):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT ban_feature FROM guild_settings WHERE guild_id = ?", (guild_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+def set_ban_feature_enabled(guild_id, enabled: bool):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO guild_settings (guild_id, ban_feature)
+        VALUES (?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET ban_feature = excluded.ban_feature
+    """, (guild_id, int(enabled)))
+    conn.commit()
+    conn.close()
+
 create_logs_table()
 naughty_words_table()
 create_user_table()
+create_guild_settings_table()
 
 #increase the number of warnings per user
 def increase_and_get_warning_count(user_id, guild_id):
@@ -257,14 +289,33 @@ async def on_command_error(ctx, error):
 #send a message when the bot joins a server
 @bot.event
 async def on_guild_join(guild):
-    intro_message = ("Hello! I am a moderation bot built by Allancash123.\n"
-                     "My main purpose is to assist with moderation tasks.\n"
-                     "I automatically filter banned words and warn users.\n\n"
-                     "Use `/about` to learn about me.\n"
-                     "Use `/commands` to see my command list.")
+    embed = discord.Embed(
+        title="👋 Hey there! I'm Mod Bot.",
+        description="Built by Allancash123 to help keep your server clean and safe.",
+        color=discord.Color.blue()
+    )
+    embed.add_field(
+        name="What I do",
+        value="I automatically filter banned words and issue warnings to users who use them.",
+        inline=False
+    )
+    embed.add_field(
+        name="Warning System",
+        value=(
+            "• **1st warning** — User is warned\n"
+            "• **2nd warning** — 1 hour timeout\n"
+            "• **3rd warning** — 2 hour timeout\n"
+            "• **4th warning** — Ban *(optional, off by default — enable with `/banfeature`)*"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="Get started",
+        value="Use `/commands` to see everything I can do, or `/about` to learn more.",
+        inline=False
+    )
 
     target_channel = None
-
     if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
         target_channel = guild.system_channel
     else:
@@ -274,7 +325,7 @@ async def on_guild_join(guild):
                 break
 
     if target_channel:
-        await target_channel.send(intro_message)
+        await target_channel.send(embed=embed)
 
 #check if the message contains a naughty word
 @bot.event
@@ -313,16 +364,32 @@ async def on_message(message):
                 message.author.id, message.guild.id
             )
             clean_content = (message.content[:100] + '..') if len(message.content) > 100 else message.content
+            ban_enabled = get_ban_feature_enabled(message.guild.id)
 
-            if num_warnings >= 3:
+            if num_warnings >= 4 and ban_enabled:
+                log_infraction(message.author.id, str(message.author), message.guild.id, "Ban (4th warning)", clean_content)
+                try:
+                    await message.delete()
+                    await message.guild.ban(message.author, reason="4th warning — repeated use of banned words.")
+                    await message.channel.send(
+                        f"{message.author.mention} has been banned for repeatedly using banned words."
+                    )
+                except discord.Forbidden:
+                    await message.channel.send(
+                        f"⚠️ I was unable to ban {message.author.mention}. "
+                        f"Please make sure my role is placed **above** all other roles in **Server Settings > Roles**."
+                    )
+
+            elif num_warnings == 3:
                 log_infraction(message.author.id, str(message.author), message.guild.id, "Timeout (2hr)", clean_content)
                 try:
                     await message.author.timeout(
                         datetime.timedelta(minutes=120),
-                        reason="Exceeded naughty word limit (3+ warnings)",
+                        reason="3rd warning — exceeded naughty word limit",
                     )
+                    ban_notice = " This is your final warning — one more and you will be **banned**." if ban_enabled else ""
                     await message.channel.send(
-                        f"{message.author.mention} has been timed out for 2 hours for saying too many naughty words."
+                        f"{message.author.mention} has been timed out for 2 hours for saying too many naughty words.{ban_notice}"
                     )
                     await message.delete()
                 except discord.Forbidden:
@@ -597,6 +664,18 @@ async def slash_listwords(interaction: discord.Interaction):
     word_list_string = ", ".join(f"`{word}`" for word in words)
     embed = discord.Embed(title="Banned Words List", description=word_list_string, color=discord.Color.red())
     await interaction.response.send_message(embed=embed)
+
+@bot.tree.command(name="banfeature", description="Toggle the 4th warning ban feature on or off (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_banfeature(interaction: discord.Interaction):
+    current = get_ban_feature_enabled(interaction.guild.id)
+    new_state = not current
+    set_ban_feature_enabled(interaction.guild.id, new_state)
+    status = "**enabled** ✅" if new_state else "**disabled** ❌"
+    await interaction.response.send_message(
+        f"The 4th warning ban feature is now {status}.\n"
+        f"{'Users will now be banned on their 4th warning.' if new_state else 'Users will only receive timeouts.'}"
+    )
 
 @bot.tree.command(name="clearwarnings", description="Clear a user's warnings (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
