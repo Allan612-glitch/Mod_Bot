@@ -716,7 +716,8 @@ async def slash_about(interaction: discord.Interaction):
                      "**How it works:**\n"
                      "- If a user says a banned word, they get a warning.\n"
                      "- 2nd warning = 1 hour timeout.\n"
-                     "- 3rd warning = 2 hour timeout.\n\n"
+                     "- 3rd warning = 2 hour timeout.\n"
+                     "- 4th warning = Ban *(optional, off by default — Moderators can enable it with `/banfeature`)*\n\n"
                      "Use `/commands` to see the full list of commands.")
     await interaction.response.send_message(about_message)
 
@@ -729,7 +730,8 @@ async def slash_list_commands(interaction: discord.Interaction):
                      "`/removeword <word>` - Remove a banned word (Moderators only)\n"
                      "`/listwords` - See all banned words (Moderators only)\n"
                      "`/clearwarnings <member>` - Clear a user's warnings (Moderators only)\n"
-                     "`/logs <member>` - View a user's infractions (Moderators only)\n")
+                     "`/logs <member>` - View a user's infractions (Moderators only)\n"
+                     "`/banfeature` - Toggle the 4th warning ban on or off (Moderators only)\n")
     await interaction.response.send_message(commands_list)
 
 @bot.tree.error
