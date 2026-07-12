@@ -370,9 +370,15 @@ async def on_message(message):
                 log_infraction(message.author.id, str(message.author), message.guild.id, "Ban (4th warning)", clean_content)
                 try:
                     await message.delete()
+                    try:
+                        await message.author.send(
+                            f"You have been **banned** from **{message.guild.name}** for repeatedly using banned words."
+                        )
+                    except discord.Forbidden:
+                        pass
                     await message.guild.ban(message.author, reason="4th warning — repeated use of banned words.")
                     await message.channel.send(
-                        f"{message.author.mention} has been banned for repeatedly using banned words."
+                        f"🔨 {message.author.mention} has been banned for repeatedly using banned words."
                     )
                 except discord.Forbidden:
                     await message.channel.send(
