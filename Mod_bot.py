@@ -447,7 +447,7 @@ async def on_message(message):
 #one-time announcement to all servers (owner only)
 @bot.command()
 @commands.is_owner()
-async def announc(ctx):
+async def announce(ctx):
     embed = discord.Embed(
         title="Mod Bot Update",
         color=discord.Color.blue()
