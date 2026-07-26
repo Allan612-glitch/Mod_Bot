@@ -314,6 +314,11 @@ async def on_guild_join(guild):
         value="Use `/commands` to see everything I can do, or `/about` to learn more.",
         inline=False
     )
+    embed.add_field(
+        name="💬 Support Server",
+        value="Need help or have questions? [Join our support server](https://discord.gg/jQvZXXXzf)",
+        inline=False
+    )
 
     target_channel = None
     if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
@@ -467,7 +472,7 @@ async def announce(ctx):
     )
     embed.add_field(
         name="🔗 Links",
-        value="⬆️ [Vote for the bot](https://top.gg/bot/1482092741352624228?s=0f59ebc3a1c91)\n📩 [Invite the bot](https://discord.com/oauth2/authorize?client_id=1482092741352624228&permissions=4504974285417526&integration_type=0&scope=bot)",
+        value="⬆️ [Vote for the bot](https://top.gg/bot/1482092741352624228?s=0f59ebc3a1c91)\n📩 [Invite the bot](https://discord.com/oauth2/authorize?client_id=1482092741352624228&permissions=4504974285417526&integration_type=0&scope=bot)\n💬 [Join our support server](https://discord.gg/jQvZXXXzf)",
         inline=False
     )
 
@@ -490,6 +495,41 @@ async def announce(ctx):
                 pass
 
     await ctx.send(f"Update message sent to {sent} server(s).")
+
+#support server announcement to all servers (owner only)
+@bot.command()
+@commands.is_owner()
+async def supportserver(ctx):
+    embed = discord.Embed(
+        title="💬 Join the Mod Bot Support Server!",
+        description="We now have an official support server! Join for help, updates, and to share feedback directly with the team.",
+        color=discord.Color.green()
+    )
+    embed.add_field(
+        name="Join here",
+        value="[Click to join the support server](https://discord.gg/jQvZXXXzf)",
+        inline=False
+    )
+
+    sent = 0
+    for guild in bot.guilds:
+        target_channel = None
+        if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+            target_channel = guild.system_channel
+        else:
+            for channel in guild.text_channels:
+                if channel.permissions_for(guild.me).send_messages:
+                    target_channel = channel
+                    break
+
+        if target_channel:
+            try:
+                await target_channel.send(embed=embed)
+                sent += 1
+            except discord.Forbidden:
+                pass
+
+    await ctx.send(f"Support server announcement sent to {sent} server(s).")
 
 #feedback form announcement to all servers (owner only)
 @bot.command()
