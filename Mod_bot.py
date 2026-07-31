@@ -235,10 +235,12 @@ async def broadcast_to_guilds(embed=None, poll=None):
 @tasks.loop(hours=24)
 async def cleanup_old_logs():
     cutoff = datetime.datetime.now() - datetime.timedelta(days=30)
-    with get_db() as conn:
-        cursor = conn.execute("DELETE FROM mod_logs WHERE timestamp < ?", (cutoff,))
-        deleted = cursor.rowcount
-        conn.commit()
+    conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM mod_logs WHERE timestamp < ?", (cutoff,))
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
     if deleted:
         print(f"[Log Cleanup] Deleted {deleted} log(s) older than 30 days.")
 
