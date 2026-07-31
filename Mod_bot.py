@@ -251,6 +251,7 @@ async def cleanup_old_logs():
 async def on_ready():
     await bot.tree.sync()
     cleanup_old_logs.start()
+    assert bot.user
     print(f"Logged in as {bot.user.name}, bot is online")
 
 @bot.event
@@ -290,7 +291,7 @@ async def on_guild_join(guild):
 
 @bot.event
 async def on_message(message):
-    if message.author.id == bot.user.id:
+    if bot.user and message.author.id == bot.user.id:
         return
     if message.guild is None or not isinstance(message.author, discord.Member):
         await bot.process_commands(message)
@@ -452,7 +453,7 @@ async def pollresults(ctx):
                 continue
             try:
                 async for msg in channel.history(limit=50):
-                    if msg.author.id == bot.user.id and msg.poll:
+                    if bot.user and msg.author.id == bot.user.id and msg.poll:
                         save_poll_message(channel.id, msg.id)
                         break
             except discord.Forbidden:
@@ -466,7 +467,7 @@ async def pollresults(ctx):
     totals, checked, failed = {}, 0, 0
     for channel_id, message_id in records:
         channel = bot.get_channel(channel_id)
-        if not channel:
+        if not isinstance(channel, discord.TextChannel):
             failed += 1
             continue
         try:
@@ -509,6 +510,8 @@ async def servers(ctx):
 @bot.tree.command(name="addword", description="Add a banned word to this server's list (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_addword(interaction: discord.Interaction, word: str):
+    if interaction.guild is None:
+        return
     conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
     cursor = conn.cursor()
     try:
@@ -523,6 +526,8 @@ async def slash_addword(interaction: discord.Interaction, word: str):
 @bot.tree.command(name="removeword", description="Remove a banned word from this server's list (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_removeword(interaction: discord.Interaction, word: str):
+    if interaction.guild is None:
+        return
     conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
     cursor = conn.cursor()
     cursor.execute("DELETE FROM naughty_words WHERE word = ? AND guild_id = ?", (word.lower(), interaction.guild.id))
@@ -537,6 +542,8 @@ async def slash_removeword(interaction: discord.Interaction, word: str):
 @bot.tree.command(name="listwords", description="See all banned words for this server (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_listwords(interaction: discord.Interaction):
+    if interaction.guild is None:
+        return
     words = get_naughty_words(interaction.guild.id)
     if not words:
         await interaction.response.send_message("There are currently no banned words in this server.")
@@ -551,6 +558,8 @@ async def slash_listwords(interaction: discord.Interaction):
 @bot.tree.command(name="banfeature", description="Toggle the 4th warning ban feature on or off (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_banfeature(interaction: discord.Interaction):
+    if interaction.guild is None:
+        return
     new_state = not get_ban_feature_enabled(interaction.guild.id)
     set_ban_feature_enabled(interaction.guild.id, new_state)
     status = "**enabled** ✅" if new_state else "**disabled** ❌"
@@ -560,6 +569,8 @@ async def slash_banfeature(interaction: discord.Interaction):
 @bot.tree.command(name="clearwarnings", description="Clear a user's warnings (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_clearwarnings(interaction: discord.Interaction, member: discord.Member):
+    if interaction.guild is None:
+        return
     conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
     cursor = conn.cursor()
     cursor.execute("DELETE FROM users_per_guild WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
@@ -570,6 +581,8 @@ async def slash_clearwarnings(interaction: discord.Interaction, member: discord.
 @bot.tree.command(name="logs", description="View recent infractions for a user (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_logs(interaction: discord.Interaction, member: discord.Member):
+    if interaction.guild is None:
+        return
     conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
     cursor = conn.cursor()
     cursor.execute("""
@@ -623,4 +636,6 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 
 # ---- RUN ----
 
-bot.run(os.getenv("DISCORD_TOKEN_TEST"))
+TOKEN = os.getenv("DISCORD_TOKEN_TEST")
+assert TOKEN, "DISCORD_TOKEN_TEST environment variable is not set"
+bot.run(TOKEN)
