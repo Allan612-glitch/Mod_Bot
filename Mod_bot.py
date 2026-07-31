@@ -5,6 +5,8 @@ from discord import app_commands
 from dotenv import load_dotenv
 import datetime
 import sqlite3
+import time
+from collections import defaultdict, deque
 
 load_dotenv()
 
@@ -87,6 +89,23 @@ create_user_table()
 create_guild_settings_table()
 create_polls_table()
 
+def migrate_db():
+    """Add new columns to existing tables without losing data."""
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    for column_def in [
+        "spam_protection INTEGER DEFAULT 0",
+        "raid_protection INTEGER DEFAULT 0",
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE guild_settings ADD COLUMN {column_def}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+    conn.commit()
+    conn.close()
+
+migrate_db()
+
 # ---- DB HELPERS ----
 
 def log_infraction(user_id, username, guild_id, infraction_type, content):
@@ -150,6 +169,44 @@ def set_ban_feature_enabled(guild_id, enabled: bool):
     conn.commit()
     conn.close()
 
+def get_spam_protection_enabled(guild_id):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT spam_protection FROM guild_settings WHERE guild_id = ?", (guild_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+def set_spam_protection_enabled(guild_id, enabled: bool):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO guild_settings (guild_id, spam_protection)
+        VALUES (?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET spam_protection = excluded.spam_protection
+    """, (guild_id, int(enabled)))
+    conn.commit()
+    conn.close()
+
+def get_raid_protection_enabled(guild_id):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT raid_protection FROM guild_settings WHERE guild_id = ?", (guild_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return bool(row and row[0])
+
+def set_raid_protection_enabled(guild_id, enabled: bool):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO guild_settings (guild_id, raid_protection)
+        VALUES (?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET raid_protection = excluded.raid_protection
+    """, (guild_id, int(enabled)))
+    conn.commit()
+    conn.close()
+
 def save_poll_message(channel_id, message_id):
     conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
     cursor = conn.cursor()
@@ -194,6 +251,34 @@ def contains_banned_word(content, banned_words):
         normalize_text(content).replace(' ', ''),
     ]
     return any(word in variant for word in banned_words for variant in variants)
+
+# ---- SPAM / RAID CONSTANTS & TRACKERS ----
+
+SPAM_MESSAGE_LIMIT = 5    # max messages allowed within the time window
+SPAM_TIME_WINDOW   = 5    # seconds
+MENTION_LIMIT      = 5    # max user/role mentions in a single message
+RAID_JOIN_LIMIT    = 10   # joins that trigger a raid alert
+RAID_TIME_WINDOW   = 30   # seconds
+
+# (user_id, guild_id) -> deque of timestamps
+message_tracker: dict = defaultdict(deque)
+# guild_id -> deque of timestamps
+join_tracker: dict = defaultdict(deque)
+
+def is_message_spam(user_id: int, guild_id: int) -> bool:
+    """Return True if the user has exceeded the message rate limit."""
+    key = (user_id, guild_id)
+    now = time.time()
+    timestamps = message_tracker[key]
+    timestamps.append(now)
+    cutoff = now - SPAM_TIME_WINDOW
+    while timestamps and timestamps[0] < cutoff:
+        timestamps.popleft()
+    return len(timestamps) > SPAM_MESSAGE_LIMIT
+
+def is_mention_spam(message: discord.Message) -> bool:
+    """Return True if the message contains too many mentions."""
+    return len(message.mentions) + len(message.role_mentions) > MENTION_LIMIT
 
 # ---- BOT SETUP ----
 
@@ -301,6 +386,9 @@ async def on_message(message):
         banned_words = get_naughty_words(message.guild.id)
         if banned_words and contains_banned_word(message.content, banned_words):
             await handle_infraction(message)
+        elif get_spam_protection_enabled(message.guild.id):
+            if is_mention_spam(message) or is_message_spam(message.author.id, message.guild.id):
+                await handle_infraction(message)
 
     await bot.process_commands(message)
 
@@ -367,6 +455,42 @@ async def handle_infraction(message):
             pass
         await message.channel.send(f"{member.mention} Please do not say naughty words.")
         await message.delete()
+
+@bot.event
+async def on_member_join(member):
+    guild = member.guild
+    if not get_raid_protection_enabled(guild.id):
+        return
+
+    now = time.time()
+    joins = join_tracker[guild.id]
+    joins.append(now)
+    cutoff = now - RAID_TIME_WINDOW
+    while joins and joins[0] < cutoff:
+        joins.popleft()
+
+    if len(joins) >= RAID_JOIN_LIMIT:
+        joins.clear()  # Reset to avoid repeated alerts for the same wave
+        embed = discord.Embed(
+            title="⚠️ Potential Raid Detected!",
+            description=(
+                f"**{RAID_JOIN_LIMIT}+ members joined within {RAID_TIME_WINDOW} seconds.**\n"
+                "Please review recent joins and take action if necessary."
+            ),
+            color=discord.Color.red()
+        )
+        channel = get_target_channel(guild)
+        if channel:
+            await channel.send(embed=embed)
+        if guild.owner:
+            try:
+                await guild.owner.send(
+                    f"⚠️ **Raid alert for {guild.name}!**\n"
+                    f"{RAID_JOIN_LIMIT}+ members joined within {RAID_TIME_WINDOW} seconds. "
+                    "Please check your server immediately."
+                )
+            except discord.Forbidden:
+                pass
 
 # ---- OWNER COMMANDS ----
 
@@ -600,6 +724,37 @@ async def slash_logs(interaction: discord.Interaction, member: discord.Member):
         log_text += f"• `[{time[:19]}]` **{infraction_type}**: \"{content}\"\n"
     await interaction.response.send_message(log_text)
 
+@bot.tree.command(name="spamprotection", description="Toggle spam protection on or off (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_spamprotection(interaction: discord.Interaction):
+    if interaction.guild is None:
+        return
+    new_state = not get_spam_protection_enabled(interaction.guild.id)
+    set_spam_protection_enabled(interaction.guild.id, new_state)
+    status = "**enabled** ✅" if new_state else "**disabled** ❌"
+    detail = (
+        f"Messages exceeding **{SPAM_MESSAGE_LIMIT} messages in {SPAM_TIME_WINDOW}s** "
+        f"or containing more than **{MENTION_LIMIT} mentions** will be actioned."
+        if new_state else
+        "Message and mention spam will no longer be automatically actioned."
+    )
+    await interaction.response.send_message(f"Spam protection is now {status}.\n{detail}")
+
+@bot.tree.command(name="raidprotection", description="Toggle raid protection on or off (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_raidprotection(interaction: discord.Interaction):
+    if interaction.guild is None:
+        return
+    new_state = not get_raid_protection_enabled(interaction.guild.id)
+    set_raid_protection_enabled(interaction.guild.id, new_state)
+    status = "**enabled** ✅" if new_state else "**disabled** ❌"
+    detail = (
+        f"An alert will be sent if **{RAID_JOIN_LIMIT}+ members join within {RAID_TIME_WINDOW}s**."
+        if new_state else
+        "Raid join alerts have been turned off."
+    )
+    await interaction.response.send_message(f"Raid protection is now {status}.\n{detail}")
+
 @bot.tree.command(name="about", description="Learn about this bot")
 async def slash_about(interaction: discord.Interaction):
     await interaction.response.send_message(
@@ -625,6 +780,8 @@ async def slash_list_commands(interaction: discord.Interaction):
         "`/clearwarnings <member>` - Clear a user's warnings (Moderators only)\n"
         "`/logs <member>` - View a user's infractions (Moderators only)\n"
         "`/banfeature` - Toggle the 4th warning ban on or off (Moderators only)\n"
+        "`/spamprotection` - Toggle message & mention spam protection (Moderators only)\n"
+        "`/raidprotection` - Toggle raid join alerts (Moderators only)\n"
     )
 
 @bot.tree.error
@@ -637,4 +794,5 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 # ---- RUN ----
 
 TOKEN = os.getenv("DISCORD_TOKEN_TEST")
+assert TOKEN, "DISCORD_TOKEN_TEST environment variable is not set"
 bot.run(TOKEN)
