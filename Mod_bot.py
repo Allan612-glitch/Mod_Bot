@@ -5,123 +5,171 @@ from discord import app_commands
 from dotenv import load_dotenv
 import datetime
 import sqlite3
-from contextlib import contextmanager
 
 load_dotenv()
 
 Base_dir = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(Base_dir, "mod_bot.db")
 
-# ---- DATABASE ----
+# ---- DATABASE SETUP ----
 
-@contextmanager
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        yield conn
-    finally:
-        conn.close()
+def create_polls_table():
+    conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS poll_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id INTEGER,
+            message_id INTEGER
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-def init_db():
-    with get_db() as conn:
-        conn.executescript("""
-            CREATE TABLE IF NOT EXISTS poll_messages (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                channel_id INTEGER,
-                message_id INTEGER
-            );
-            CREATE TABLE IF NOT EXISTS mod_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                username TEXT,
-                guild_id INTEGER,
-                infraction_type TEXT,
-                message_content TEXT,
-                timestamp DATETIME
-            );
-            CREATE TABLE IF NOT EXISTS users_per_guild (
-                user_id INTEGER,
-                warning_count INTEGER,
-                guild_id INTEGER,
-                PRIMARY KEY(user_id, guild_id)
-            );
-            CREATE TABLE IF NOT EXISTS naughty_words (
-                word TEXT,
-                guild_id INTEGER,
-                PRIMARY KEY(word, guild_id)
-            );
-            CREATE TABLE IF NOT EXISTS guild_settings (
-                guild_id INTEGER PRIMARY KEY,
-                ban_feature INTEGER DEFAULT 0
-            );
-        """)
-        conn.commit()
+def create_logs_table():
+    conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mod_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            guild_id INTEGER,
+            infraction_type TEXT,
+            message_content TEXT,
+            timestamp DATETIME
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-init_db()
+def create_user_table():
+    conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users_per_guild (
+            user_id INTEGER,
+            warning_count INTEGER,
+            guild_id INTEGER,
+            PRIMARY KEY(user_id, guild_id)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def naughty_words_table():
+    conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS naughty_words (
+            word TEXT,
+            guild_id INTEGER,
+            PRIMARY KEY(word, guild_id)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def create_guild_settings_table():
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS guild_settings (
+            guild_id INTEGER PRIMARY KEY,
+            ban_feature INTEGER DEFAULT 0
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+create_logs_table()
+naughty_words_table()
+create_user_table()
+create_guild_settings_table()
 
 # ---- DB HELPERS ----
 
 def log_infraction(user_id, username, guild_id, infraction_type, content):
-    with get_db() as conn:
-        conn.execute(
-            "INSERT INTO mod_logs (user_id, username, guild_id, infraction_type, message_content, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-            (user_id, username, guild_id, infraction_type, content, datetime.datetime.now())
-        )
-        conn.commit()
+    conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO mod_logs (user_id, username, guild_id, infraction_type, message_content, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+    """, (user_id, username, guild_id, infraction_type, content, datetime.datetime.now()))
+    conn.commit()
+    conn.close()
 
 def increase_and_get_warning_count(user_id, guild_id):
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT warning_count FROM users_per_guild WHERE user_id = ? AND guild_id = ?",
+    conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT warning_count FROM users_per_guild WHERE user_id = ? AND guild_id = ?",
+        (user_id, guild_id)
+    )
+    result = cursor.fetchone()
+    if result is None:
+        cursor.execute(
+            "INSERT INTO users_per_guild (user_id, warning_count, guild_id) VALUES (?, 1, ?)",
             (user_id, guild_id)
-        ).fetchone()
-        if row is None:
-            conn.execute(
-                "INSERT INTO users_per_guild (user_id, warning_count, guild_id) VALUES (?, 1, ?)",
-                (user_id, guild_id)
-            )
-            conn.commit()
-            return 1
-        new_count = row[0] + 1
-        conn.execute(
-            "UPDATE users_per_guild SET warning_count = ? WHERE user_id = ? AND guild_id = ?",
-            (new_count, user_id, guild_id)
         )
         conn.commit()
-        return new_count
+        conn.close()
+        return 1
+    cursor.execute(
+        "UPDATE users_per_guild SET warning_count = ? WHERE user_id = ? AND guild_id = ?",
+        (result[0] + 1, user_id, guild_id)
+    )
+    conn.commit()
+    conn.close()
+    return result[0] + 1
 
 def get_naughty_words(guild_id):
-    with get_db() as conn:
-        rows = conn.execute("SELECT word FROM naughty_words WHERE guild_id = ?", (guild_id,)).fetchall()
-    return [r[0] for r in rows]
+    conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT word FROM naughty_words WHERE guild_id = ?", (guild_id,))
+    result = cursor.fetchall()
+    conn.close()
+    return [word[0] for word in result]
 
 def get_ban_feature_enabled(guild_id):
-    with get_db() as conn:
-        row = conn.execute("SELECT ban_feature FROM guild_settings WHERE guild_id = ?", (guild_id,)).fetchone()
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT ban_feature FROM guild_settings WHERE guild_id = ?", (guild_id,))
+    row = cursor.fetchone()
+    conn.close()
     return bool(row and row[0])
 
 def set_ban_feature_enabled(guild_id, enabled: bool):
-    with get_db() as conn:
-        conn.execute(
-            "INSERT INTO guild_settings (guild_id, ban_feature) VALUES (?, ?) "
-            "ON CONFLICT(guild_id) DO UPDATE SET ban_feature = excluded.ban_feature",
-            (guild_id, int(enabled))
-        )
-        conn.commit()
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO guild_settings (guild_id, ban_feature)
+        VALUES (?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET ban_feature = excluded.ban_feature
+    """, (guild_id, int(enabled)))
+    conn.commit()
+    conn.close()
 
 def save_poll_message(channel_id, message_id):
-    with get_db() as conn:
-        conn.execute("INSERT INTO poll_messages (channel_id, message_id) VALUES (?, ?)", (channel_id, message_id))
-        conn.commit()
+    conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO poll_messages (channel_id, message_id) VALUES (?, ?)", (channel_id, message_id))
+    conn.commit()
+    conn.close()
 
 def get_poll_messages():
-    with get_db() as conn:
-        return conn.execute("SELECT channel_id, message_id FROM poll_messages").fetchall()
+    conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT channel_id, message_id FROM poll_messages")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 def clear_poll_messages():
-    with get_db() as conn:
-        conn.execute("DELETE FROM poll_messages")
-        conn.commit()
+    conn = sqlite3.connect(os.path.join(Base_dir, "polls.db"))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM poll_messages")
+    conn.commit()
+    conn.close()
 
 # ---- TEXT NORMALIZATION ----
 
@@ -458,21 +506,26 @@ async def servers(ctx):
 @bot.tree.command(name="addword", description="Add a banned word to this server's list (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_addword(interaction: discord.Interaction, word: str):
-    with get_db() as conn:
-        try:
-            conn.execute("INSERT INTO naughty_words (word, guild_id) VALUES (?, ?)", (word.lower(), interaction.guild.id))
-            conn.commit()
-            await interaction.response.send_message(f"Added `{word}` to the banned words list.")
-        except sqlite3.IntegrityError:
-            await interaction.response.send_message(f"`{word}` is already in the banned words list.")
+    conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
+    cursor = conn.cursor()
+    try:
+        cursor.execute("INSERT INTO naughty_words (word, guild_id) VALUES (?, ?)", (word.lower(), interaction.guild.id))
+        conn.commit()
+        await interaction.response.send_message(f"Added `{word}` to the banned words list.")
+    except sqlite3.IntegrityError:
+        await interaction.response.send_message(f"`{word}` is already in the banned words list.")
+    finally:
+        conn.close()
 
 @bot.tree.command(name="removeword", description="Remove a banned word from this server's list (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_removeword(interaction: discord.Interaction, word: str):
-    with get_db() as conn:
-        cursor = conn.execute("DELETE FROM naughty_words WHERE word = ? AND guild_id = ?", (word.lower(), interaction.guild.id))
-        conn.commit()
-        removed = cursor.rowcount
+    conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM naughty_words WHERE word = ? AND guild_id = ?", (word.lower(), interaction.guild.id))
+    conn.commit()
+    removed = cursor.rowcount
+    conn.close()
     if removed:
         await interaction.response.send_message(f"Removed `{word}` from the banned words list.")
     else:
@@ -504,20 +557,25 @@ async def slash_banfeature(interaction: discord.Interaction):
 @bot.tree.command(name="clearwarnings", description="Clear a user's warnings (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_clearwarnings(interaction: discord.Interaction, member: discord.Member):
-    with get_db() as conn:
-        conn.execute("DELETE FROM users_per_guild WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
-        conn.commit()
+    conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users_per_guild WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
+    conn.commit()
+    conn.close()
     await interaction.response.send_message(f"Warnings for {member.mention} have been cleared.")
 
 @bot.tree.command(name="logs", description="View recent infractions for a user (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
 async def slash_logs(interaction: discord.Interaction, member: discord.Member):
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT infraction_type, message_content, timestamp FROM mod_logs "
-            "WHERE user_id = ? AND guild_id = ? ORDER BY timestamp DESC LIMIT 10",
-            (member.id, interaction.guild.id)
-        ).fetchall()
+    conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT infraction_type, message_content, timestamp
+        FROM mod_logs WHERE user_id = ? AND guild_id = ?
+        ORDER BY timestamp DESC LIMIT 10
+    """, (member.id, interaction.guild.id))
+    rows = cursor.fetchall()
+    conn.close()
     if not rows:
         await interaction.response.send_message(f"No logs found for {member.display_name}.")
         return
