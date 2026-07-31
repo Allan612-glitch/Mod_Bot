@@ -85,6 +85,7 @@ create_logs_table()
 naughty_words_table()
 create_user_table()
 create_guild_settings_table()
+create_polls_table()
 
 # ---- DB HELPERS ----
 
