@@ -357,14 +357,30 @@ async def on_guild_join(guild):
         description="Built by Allancash123 to help keep your server clean and safe.",
         color=discord.Color.blue()
     )
-    embed.add_field(name="What I do", value="I automatically filter banned words and issue warnings to users who use them.", inline=False)
+    embed.add_field(name="What I do", value="I automatically filter banned words, detect spam, and alert you to raids — keeping your server clean and safe.", inline=False)
     embed.add_field(
-        name="Warning System",
+        name="⚠️ Warning System",
         value=(
             "• **1st warning** — User is warned\n"
             "• **2nd warning** — 1 hour timeout\n"
             "• **3rd warning** — 2 hour timeout\n"
             "• **4th warning** — Ban *(optional, off by default — enable with `/banfeature`)*"
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🛡️ Spam Protection *(off by default)*",
+        value=(
+            "Automatically actions users who send too many messages too quickly or mass-mention members.\n"
+            "Enable with `/spamprotection`."
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🚨 Raid Protection *(off by default)*",
+        value=(
+            "Alerts you and the server owner if a large wave of members joins in a short window.\n"
+            "Enable with `/raidprotection`."
         ),
         inline=False
     )
