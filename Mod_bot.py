@@ -404,26 +404,51 @@ async def on_message(message):
             await handle_infraction(message)
         elif get_spam_protection_enabled(message.guild.id):
             if is_mention_spam(message) or is_message_spam(message.author.id, message.guild.id):
-                await handle_infraction(message)
+                await handle_infraction(message, reason="spam")
 
     await bot.process_commands(message)
 
-async def handle_infraction(message):
+async def handle_infraction(message, reason="banned word"):
     member = message.author
     num_warnings = increase_and_get_warning_count(member.id, message.guild.id)
     clean_content = (message.content[:100] + '..') if len(message.content) > 100 else message.content
     ban_enabled = get_ban_feature_enabled(message.guild.id)
+
+    if reason == "spam":
+        violation = "spamming"
+        dm_warn    = "Please do not spam. You have been warned. One more time and you'll be timed out for an hour."
+        dm_1hr     = "You have been timed out for an hour for spamming. One more time and you'll be timed out for 2 hours."
+        pub_warn   = f"{member.mention} Please do not spam."
+        pub_1hr    = f"{member.mention} has been timed out for an hour for spamming."
+        pub_2hr    = f"{member.mention} has been timed out for 2 hours for spamming."
+        pub_ban    = f"🔨 {member.mention} has been banned for repeated spamming."
+        dm_ban     = f"You have been **banned** from **{message.guild.name}** for repeated spamming."
+        ban_reason = "4th warning — repeated spamming."
+        timeout_reason_3 = "3rd warning — repeated spamming"
+        timeout_reason_2 = "2nd warning — spamming"
+    else:
+        violation = "using banned words"
+        dm_warn    = "Please do not say naughty words. You have been warned. One more time and you'll be timed out for an hour."
+        dm_1hr     = "You have been timed out for an hour for saying too many naughty words. One more time and you'll be timed out for 2 hours."
+        pub_warn   = f"{member.mention} Please do not say naughty words."
+        pub_1hr    = f"{member.mention} has been timed out for an hour for saying too many naughty words."
+        pub_2hr    = f"{member.mention} has been timed out for 2 hours for saying too many naughty words."
+        pub_ban    = f"🔨 {member.mention} has been banned for repeatedly using banned words."
+        dm_ban     = f"You have been **banned** from **{message.guild.name}** for repeatedly using banned words."
+        ban_reason = "4th warning — repeated use of banned words."
+        timeout_reason_3 = "3rd warning — exceeded naughty word limit"
+        timeout_reason_2 = "Second naughty word warning"
 
     if num_warnings >= 4 and ban_enabled:
         log_infraction(member.id, str(member), message.guild.id, "Ban (4th warning)", clean_content)
         try:
             await message.delete()
             try:
-                await member.send(f"You have been **banned** from **{message.guild.name}** for repeatedly using banned words.")
+                await member.send(dm_ban)
             except discord.Forbidden:
                 pass
-            await message.guild.ban(member, reason="4th warning — repeated use of banned words.")
-            await message.channel.send(f"🔨 {member.mention} has been banned for repeatedly using banned words.")
+            await message.guild.ban(member, reason=ban_reason)
+            await message.channel.send(pub_ban)
         except discord.Forbidden:
             await message.channel.send(
                 f"⚠️ I was unable to ban {member.mention}. "
@@ -433,11 +458,9 @@ async def handle_infraction(message):
     elif num_warnings >= 3:
         log_infraction(member.id, str(member), message.guild.id, "Timeout (2hr)", clean_content)
         try:
-            await member.timeout(datetime.timedelta(minutes=120), reason="3rd warning — exceeded naughty word limit")
+            await member.timeout(datetime.timedelta(minutes=120), reason=timeout_reason_3)
             ban_notice = " This is your final warning — one more and you will be **banned**." if ban_enabled else ""
-            await message.channel.send(
-                f"{member.mention} has been timed out for 2 hours for saying too many naughty words.{ban_notice}"
-            )
+            await message.channel.send(f"{pub_2hr}{ban_notice}")
             await message.delete()
         except discord.Forbidden:
             await message.channel.send(
@@ -449,12 +472,12 @@ async def handle_infraction(message):
     elif num_warnings == 2:
         log_infraction(member.id, str(member), message.guild.id, "Timeout (1hr)", clean_content)
         try:
-            await member.timeout(datetime.timedelta(minutes=60), reason="Second naughty word warning")
+            await member.timeout(datetime.timedelta(minutes=60), reason=timeout_reason_2)
             try:
-                await member.send("You have been timed out for an hour for saying too many naughty words. One more time and you'll be timed out for 2 hours.")
+                await member.send(dm_1hr)
             except discord.Forbidden:
                 pass
-            await message.channel.send(f"{member.mention} has been timed out for an hour for saying too many naughty words.")
+            await message.channel.send(pub_1hr)
             await message.delete()
         except discord.Forbidden:
             await message.channel.send(
@@ -466,10 +489,10 @@ async def handle_infraction(message):
     else:  # 1st warning
         log_infraction(member.id, str(member), message.guild.id, "Warning #1", clean_content)
         try:
-            await member.send("Please do not say naughty words. You have been warned. One more time and you'll be timed out for an hour.")
+            await member.send(dm_warn)
         except discord.Forbidden:
             pass
-        await message.channel.send(f"{member.mention} Please do not say naughty words.")
+        await message.channel.send(pub_warn)
         await message.delete()
 
 @bot.event
