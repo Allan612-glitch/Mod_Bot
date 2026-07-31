@@ -637,5 +637,4 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 # ---- RUN ----
 
 TOKEN = os.getenv("DISCORD_TOKEN_TEST")
-assert TOKEN, "DISCORD_TOKEN_TEST environment variable is not set"
 bot.run(TOKEN)
