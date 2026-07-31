@@ -536,17 +536,35 @@ async def on_member_join(member):
 @bot.command()
 @commands.is_owner()
 async def announce(ctx):
-    embed = discord.Embed(title="Mod Bot Update", color=discord.Color.blue())
+    embed = discord.Embed(
+        title="Mod Bot Update — New Features!",
+        description="Mod Bot has been updated with new protection features. Here's what's new:",
+        color=discord.Color.blue()
+    )
     embed.add_field(
-        name="🔨 Optional Ban Feature",
+        name="🛡️ Spam Protection *(new)*",
         value=(
-            "Mod Bot now supports an optional **4th warning ban**.\n\n"
-            "How it works:\n"
+            "Automatically warns and times out users who send too many messages too quickly "
+            "or mass-mention members.\n"
+            "**Off by default** — enable with `/spamprotection`."
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🚨 Raid Protection *(new)*",
+        value=(
+            "Alerts moderators and the server owner when a large wave of members joins in a short window.\n"
+            "**Off by default** — enable with `/raidprotection`."
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="⚠️ Warning System *(unchanged)*",
+        value=(
             "• 1st warning — User is warned\n"
             "• 2nd warning — 1 hour timeout\n"
             "• 3rd warning — 2 hour timeout\n"
-            "• 4th warning — **Ban** *(if enabled)*\n\n"
-            "This is **off by default**. Moderators can enable it with `/banfeature`."
+            "• 4th warning — **Ban** *(optional, enable with `/banfeature`)*"
         ),
         inline=False
     )
