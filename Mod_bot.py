@@ -594,6 +594,23 @@ async def supportserver(ctx):
 
 @bot.command()
 @commands.is_owner()
+async def supportpay(ctx):
+    embed = discord.Embed(
+        title="❤️ Support Mod Bot",
+        description="Enjoying Mod Bot? Consider supporting its development — it helps keep the bot running and improving!",
+        color=discord.Color.green()
+    )
+    embed.add_field(
+        name="💳 Make a contribution",
+        value="[Click here to support Mod Bot](https://paystack.shop/pay/v0bzt1fsan)",
+        inline=False
+    )
+    embed.set_footer(text="Every contribution is greatly appreciated. Thank you! 🙏")
+    sent = await broadcast_to_guilds(embed=embed)
+    await ctx.send(f"Support payment announcement sent to {sent} server(s).")
+
+@bot.command()
+@commands.is_owner()
 async def survey(ctx):
     embed = discord.Embed(
         title="We Want Your Feedback!",
@@ -812,6 +829,21 @@ async def slash_raidprotection(interaction: discord.Interaction):
     )
     await interaction.response.send_message(f"Raid protection is now {status}.\n{detail}")
 
+@bot.tree.command(name="support", description="Support Mod Bot's development")
+async def slash_support(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="❤️ Support Mod Bot",
+        description="Enjoying Mod Bot? Consider supporting its development — it helps keep the bot running and improving!",
+        color=discord.Color.green()
+    )
+    embed.add_field(
+        name="💳 Make a contribution",
+        value="[Click here to support Mod Bot](https://paystack.shop/pay/v0bzt1fsan)",
+        inline=False
+    )
+    embed.set_footer(text="Every contribution is greatly appreciated. Thank you! 🙏")
+    await interaction.response.send_message(embed=embed)
+
 @bot.tree.command(name="about", description="Learn about this bot")
 async def slash_about(interaction: discord.Interaction):
     await interaction.response.send_message(
@@ -839,6 +871,7 @@ async def slash_list_commands(interaction: discord.Interaction):
         "`/banfeature` - Toggle the 4th warning ban on or off (Moderators only)\n"
         "`/spamprotection` - Toggle message & mention spam protection (Moderators only)\n"
         "`/raidprotection` - Toggle raid join alerts (Moderators only)\n"
+        "`/support` - Support Mod Bot's development\n"
     )
 
 @bot.tree.error
