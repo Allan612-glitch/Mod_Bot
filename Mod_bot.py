@@ -577,6 +577,7 @@ async def announce(ctx):
         ),
         inline=False
     )
+    embed.add_field(name="❤️ Support Mod Bot", value="[Click here to support Mod Bot's development](https://paystack.shop/pay/v0bzt1fsan)", inline=False)
     sent = await broadcast_to_guilds(embed=embed)
     await ctx.send(f"Update message sent to {sent} server(s).")
 
@@ -589,6 +590,7 @@ async def supportserver(ctx):
         color=discord.Color.green()
     )
     embed.add_field(name="Join here", value="[Click to join the support server](https://discord.gg/jQvZXXXzf)", inline=False)
+    embed.add_field(name="❤️ Support Mod Bot", value="[Click here to support Mod Bot's development](https://paystack.shop/pay/v0bzt1fsan)", inline=False)
     sent = await broadcast_to_guilds(embed=embed)
     await ctx.send(f"Support server announcement sent to {sent} server(s).")
 
@@ -700,8 +702,27 @@ async def servers(ctx):
     if not bot.guilds:
         await ctx.send("I am not in any servers.")
         return
-    server_list = "\n".join(f"{i+1}. {g.name} ({g.member_count} members)" for i, g in enumerate(bot.guilds))
-    await ctx.send(f"**Servers I'm in ({len(bot.guilds)}):**\n{server_list}")
+
+    header = f"**Servers I'm in ({len(bot.guilds)}):**\n"
+
+    chunks = []
+    current_chunk = header
+
+    for i, guild in enumerate(bot.guilds, 1):
+        line = f"{i}. {guild.name} ({guild.member_count} members)\n"
+
+        # Keep each message under Discord's 2000-character limit
+        if len(current_chunk) + len(line) > 2000:
+            chunks.append(current_chunk)
+            current_chunk = line
+        else:
+            current_chunk += line
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    for chunk in chunks:
+        await ctx.send(chunk)
 
 # ---- SLASH COMMANDS ----
 
