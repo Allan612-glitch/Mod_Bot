@@ -385,7 +385,7 @@ async def on_guild_join(guild):
         inline=False
     )
     embed.add_field(name="Get started", value="Use `/commands` to see everything I can do, or `/about` to learn more.", inline=False)
-    embed.add_field(name="💬 Support Server", value="Need help or have questions? [Join our support server](https://discord.gg/jQvZXXXzf)", inline=False)
+    embed.add_field(name="💬 Support Server", value="Need help or have questions? [Join our support server](https://discord.gg/fEWnEHPXH)", inline=False)
     channel = get_target_channel(guild)
     if channel:
         await channel.send(embed=embed)
@@ -573,7 +573,7 @@ async def announce(ctx):
         value=(
             "⬆️ [Vote for the bot](https://top.gg/bot/1482092741352624228?s=0f59ebc3a1c91)\n"
             "📩 [Invite the bot](https://discord.com/oauth2/authorize?client_id=1482092741352624228&permissions=4504974285417526&integration_type=0&scope=bot)\n"
-            "💬 [Join our support server](https://discord.gg/jQvZXXXzf)"
+            "💬 [Join our support server](https://discord.gg/fEWnEHPXH)"
         ),
         inline=False
     )
@@ -589,7 +589,7 @@ async def supportserver(ctx):
         description="We now have an official support server! Join for help, updates, and to share feedback directly with the team.",
         color=discord.Color.green()
     )
-    embed.add_field(name="Join here", value="[Click to join the support server](https://discord.gg/jQvZXXXzf)", inline=False)
+    embed.add_field(name="Join here", value="[Click to join the support server](https://discord.gg/fEWnEHPXH)", inline=False)
     embed.add_field(name="❤️ Support Mod Bot", value="[Click here to support Mod Bot's development](https://paystack.shop/pay/v0bzt1fsan)", inline=False)
     sent = await broadcast_to_guilds(embed=embed)
     await ctx.send(f"Support server announcement sent to {sent} server(s).")
