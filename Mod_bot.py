@@ -798,41 +798,58 @@ async def on_member_join(member):
 @commands.is_owner()
 async def announce(ctx):
     embed = discord.Embed(
-        title="Mod Bot Update — New Features!",
-        description="Mod Bot has been updated with new protection features. Here's what's new:",
+        title="Mod Bot Update — Improved Moderation",
+        description="New moderation protections and clearer server controls are available:",
         color=discord.Color.blue()
     )
     embed.add_field(
-        name="🛡️ Spam Protection *(new)*",
+        name="🔎 Improved banned-word detection",
         value=(
-            "Detects rapid messages, repeated identical messages, mass mentions, and link floods.\n"
+            "The filter now catches common attempts to disguise banned words with leetspeak, punctuation, "
+            "invisible characters, accented or full-width letters, Greek/Cyrillic lookalikes, and stretched letters.\n"
+            "Your server's existing banned-word list is unchanged."
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🛡️ Spam protection",
+        value=(
+            "Can detect rapid messages, repeated identical messages, mass mentions, and link floods. "
+            "Detected spam uses its own warning count, separate from banned-word warnings.\n"
             "**Off by default** — enable with `/spamprotection`."
         ),
         inline=False
     )
     embed.add_field(
-        name="🚨 Raid Protection *(new)*",
+        name="🚨 Raid alerts",
         value=(
-            "Alerts moderators and the server owner about join bursts and how many joining accounts are under 7 days old.\n"
+            "Alerts moderators and the server owner when 10 or more people join within 30 seconds, "
+            "and reports how many joining accounts are under 7 days old. The bot does not automatically punish joiners.\n"
             "**Off by default** — enable with `/raidprotection`."
         ),
         inline=False
     )
     embed.add_field(
-        name="🧾 Moderation controls",
+        name="🧾 Private moderation log — what it means",
         value=(
-            "Spam and banned-word warnings are tracked separately. Warnings expire after 30 days by default "
-            "(configure with `/warningexpiry`). Configure a private action-log channel with `/setmodlog`."
+            "Choose a channel with `/setmodlog #channel`. Mod Bot will post an audit note there when it takes "
+            "a moderation action or detects a raid. Notes show who was involved, why the bot acted, the action, "
+            "the warning count, and a short message excerpt when available.\n"
+            "Only people who can view that channel can read these notes, so choose a staff-only channel and give "
+            "the bot permission to send messages and embeds. This is an extra staff record; normal warnings and "
+            "action notices may still appear in the original conversation. Use `/setmodlog` without a channel to clear it."
         ),
         inline=False
     )
     embed.add_field(
-        name="⚠️ Warning System *(unchanged)*",
+        name="⚠️ Warning escalation and expiry",
         value=(
             "• 1st warning — User is warned\n"
             "• 2nd warning — 1 hour timeout\n"
             "• 3rd warning — 2 hour timeout\n"
-            "• 4th warning — **Ban** *(optional, enable with `/banfeature`)*"
+            "• 4th warning — **Ban** *(optional, enable with `/banfeature`)*\n"
+            "Spam and banned-word warnings are counted separately. Warnings expire after 30 days by default; "
+            "change this with `/warningexpiry <days>` or use `0` to keep them from expiring."
         ),
         inline=False
     )
