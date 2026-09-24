@@ -7,6 +7,7 @@ import datetime
 import sqlite3
 import time
 import re
+import unicodedata
 from collections import defaultdict, deque
 
 load_dotenv()
@@ -324,24 +325,61 @@ def clear_poll_messages():
 
 LEET_MAP = str.maketrans({
     '@': 'a', '4': 'a',
-    '!': 'i', '1': 'i', 'l': 'i',
+    '!': 'i', '1': 'i', 'l': 'i', '|': 'i',
     '0': 'o', '3': 'e',
     '$': 's', '5': 's',
     '7': 't', '+': 't',
     '(': 'c', '*': '',
 })
 
+HOMOGLYPH_MAP = str.maketrans({
+    # Common Cyrillic characters that resemble Latin letters.
+    "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p",
+    "\u0441": "c", "\u0445": "x", "\u0443": "y", "\u0456": "i",
+    "\u0458": "j", "\u043a": "k", "\u043c": "m", "\u0442": "t",
+    "\u0432": "b", "\u043d": "h", "\u0455": "s",
+    # Frequently used Greek lookalikes.
+    "\u03b1": "a", "\u03b5": "e", "\u03b9": "i", "\u03ba": "k",
+    "\u03bd": "v", "\u03bf": "o", "\u03c1": "p", "\u03c4": "t",
+    "\u03c5": "y", "\u03c7": "x",
+})
+
+def _unicode_normalize(text):
+    """Normalize compatibility forms and remove accents/invisible controls."""
+    text = unicodedata.normalize("NFKD", text).casefold()
+    return "".join(
+        char for char in text
+        if not unicodedata.category(char).startswith(("M", "C"))
+    )
+
 def normalize_text(text):
-    return text.lower().translate(LEET_MAP)
+    return _unicode_normalize(text).translate(HOMOGLYPH_MAP).translate(LEET_MAP)
+
+def _matching_variants(text):
+    """Build conservative variants for punctuation, spacing, and stretched text."""
+    unicode_text = _unicode_normalize(text)
+    leet_text = unicode_text.translate(HOMOGLYPH_MAP).translate(LEET_MAP)
+    variants = {unicode_text, leet_text}
+    for value in (unicode_text, leet_text):
+        compact = "".join(char for char in value if char.isalnum())
+        if compact:
+            variants.add(compact)
+            # Catch elongated text without changing the original candidate.
+            variants.add(re.sub(r"(.)\1{2,}", r"\1\1", compact))
+            variants.add(re.sub(r"(.)\1+", r"\1", compact))
+    return {variant for variant in variants if variant}
 
 def contains_banned_word(content, banned_words):
-    variants = [
-        content.lower(),
-        normalize_text(content),
-        content.lower().replace(' ', ''),
-        normalize_text(content).replace(' ', ''),
-    ]
-    return any(word in variant for word in banned_words for variant in variants)
+    content_variants = _matching_variants(content)
+    for word in banned_words:
+        word_variants = _matching_variants(word)
+        if any(
+            candidate in content_variant
+            for candidate in word_variants
+            for content_variant in content_variants
+        ):
+            return True
+    return False
 
 # ---- SPAM / RAID CONSTANTS & TRACKERS ----
 
