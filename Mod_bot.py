@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import datetime
 import sqlite3
 import time
+import re
 from collections import defaultdict, deque
 
 load_dotenv()
@@ -90,12 +91,14 @@ create_guild_settings_table()
 create_polls_table()
 
 def migrate_db():
-    """Add new columns to existing tables without losing data."""
+    """Add new settings and reason-specific warning storage without losing data."""
     conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
     cursor = conn.cursor()
     for column_def in [
         "spam_protection INTEGER DEFAULT 0",
         "raid_protection INTEGER DEFAULT 0",
+        "warning_expiry_days INTEGER DEFAULT 30",
+        "mod_log_channel_id INTEGER",
     ]:
         try:
             cursor.execute(f"ALTER TABLE guild_settings ADD COLUMN {column_def}")
@@ -108,6 +111,32 @@ migrate_db()
 
 # ---- DB HELPERS ----
 
+def create_warning_counts_table():
+    conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS warning_counts (
+            user_id INTEGER NOT NULL,
+            guild_id INTEGER NOT NULL,
+            offense_type TEXT NOT NULL,
+            warning_count INTEGER NOT NULL DEFAULT 0,
+            last_warning_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, guild_id, offense_type)
+        )
+    """)
+    # Preserve historical shared warnings as banned-word warnings. Since the
+    # old schema had no timestamp or reason, start their expiry window now.
+    cursor.execute("""
+        INSERT OR IGNORE INTO warning_counts
+            (user_id, guild_id, offense_type, warning_count, last_warning_at)
+        SELECT user_id, guild_id, 'banned_word', warning_count, ?
+        FROM users_per_guild
+    """, (datetime.datetime.now().isoformat(),))
+    conn.commit()
+    conn.close()
+
+create_warning_counts_table()
+
 def log_infraction(user_id, username, guild_id, infraction_type, content):
     conn = sqlite3.connect(os.path.join(Base_dir, "mod_logs.db"))
     cursor = conn.cursor()
@@ -118,29 +147,91 @@ def log_infraction(user_id, username, guild_id, infraction_type, content):
     conn.commit()
     conn.close()
 
-def increase_and_get_warning_count(user_id, guild_id):
+def increase_and_get_warning_count(user_id, guild_id, offense_type, expiry_days):
     conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT warning_count FROM users_per_guild WHERE user_id = ? AND guild_id = ?",
-        (user_id, guild_id)
+        """
+        SELECT warning_count, last_warning_at FROM warning_counts
+        WHERE user_id = ? AND guild_id = ? AND offense_type = ?
+        """,
+        (user_id, guild_id, offense_type)
     )
     result = cursor.fetchone()
-    if result is None:
-        cursor.execute(
-            "INSERT INTO users_per_guild (user_id, warning_count, guild_id) VALUES (?, 1, ?)",
-            (user_id, guild_id)
-        )
-        conn.commit()
-        conn.close()
-        return 1
-    cursor.execute(
-        "UPDATE users_per_guild SET warning_count = ? WHERE user_id = ? AND guild_id = ?",
-        (result[0] + 1, user_id, guild_id)
-    )
+    now = datetime.datetime.now()
+    count = result[0] if result else 0
+    if result and expiry_days > 0:
+        last_warning_at = datetime.datetime.fromisoformat(result[1])
+        if now - last_warning_at >= datetime.timedelta(days=expiry_days):
+            count = 0
+
+    count += 1
+    cursor.execute("""
+        INSERT INTO warning_counts
+            (user_id, guild_id, offense_type, warning_count, last_warning_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, guild_id, offense_type) DO UPDATE SET
+            warning_count = excluded.warning_count,
+            last_warning_at = excluded.last_warning_at
+    """, (user_id, guild_id, offense_type, count, now.isoformat()))
     conn.commit()
     conn.close()
-    return result[0] + 1
+    return count
+
+def get_warning_count(user_id, guild_id, offense_type, expiry_days):
+    conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT warning_count, last_warning_at FROM warning_counts
+        WHERE user_id = ? AND guild_id = ? AND offense_type = ?
+    """, (user_id, guild_id, offense_type))
+    row = cursor.fetchone()
+    conn.close()
+    if not row:
+        return 0
+    if expiry_days > 0:
+        last_warning_at = datetime.datetime.fromisoformat(row[1])
+        if datetime.datetime.now() - last_warning_at >= datetime.timedelta(days=expiry_days):
+            return 0
+    return row[0]
+
+def get_warning_expiry_days(guild_id):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT warning_expiry_days FROM guild_settings WHERE guild_id = ?", (guild_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return int(row[0]) if row and row[0] is not None else 30
+
+def set_warning_expiry_days(guild_id, days):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO guild_settings (guild_id, warning_expiry_days)
+        VALUES (?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET warning_expiry_days = excluded.warning_expiry_days
+    """, (guild_id, days))
+    conn.commit()
+    conn.close()
+
+def get_mod_log_channel_id(guild_id):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("SELECT mod_log_channel_id FROM guild_settings WHERE guild_id = ?", (guild_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+def set_mod_log_channel_id(guild_id, channel_id):
+    conn = sqlite3.connect(os.path.join(Base_dir, "guild_settings.db"))
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO guild_settings (guild_id, mod_log_channel_id)
+        VALUES (?, ?)
+        ON CONFLICT(guild_id) DO UPDATE SET mod_log_channel_id = excluded.mod_log_channel_id
+    """, (guild_id, channel_id))
+    conn.commit()
+    conn.close()
 
 def get_naughty_words(guild_id):
     conn = sqlite3.connect(os.path.join(Base_dir, "naughty_words.db"))
@@ -257,28 +348,79 @@ def contains_banned_word(content, banned_words):
 SPAM_MESSAGE_LIMIT = 5    # max messages allowed within the time window
 SPAM_TIME_WINDOW   = 5    # seconds
 MENTION_LIMIT      = 5    # max user/role mentions in a single message
+REPEAT_MESSAGE_LIMIT = 3  # identical messages within the repeat window
+REPEAT_TIME_WINDOW = 10   # seconds
+LINK_MESSAGE_LIMIT = 3   # link-containing messages within the link window
+LINK_TIME_WINDOW = 10    # seconds
+LINKS_PER_MESSAGE_LIMIT = 3
+SPAM_ACTION_COOLDOWN = 15  # avoid stacking warnings for one uninterrupted burst
 RAID_JOIN_LIMIT    = 10   # joins that trigger a raid alert
 RAID_TIME_WINDOW   = 30   # seconds
+NEW_ACCOUNT_DAYS   = 7
 
 # (user_id, guild_id) -> deque of timestamps
 message_tracker: dict = defaultdict(deque)
-# guild_id -> deque of timestamps
+# (user_id, guild_id) -> deque of (timestamp, normalized message)
+repeat_tracker: dict = defaultdict(deque)
+# (user_id, guild_id) -> deque of timestamps for link-containing messages
+link_tracker: dict = defaultdict(deque)
+spam_action_tracker: dict = {}
+# guild_id -> deque of (join timestamp, account age in days)
 join_tracker: dict = defaultdict(deque)
-
-def is_message_spam(user_id: int, guild_id: int) -> bool:
-    """Return True if the user has exceeded the message rate limit."""
-    key = (user_id, guild_id)
-    now = time.time()
-    timestamps = message_tracker[key]
-    timestamps.append(now)
-    cutoff = now - SPAM_TIME_WINDOW
-    while timestamps and timestamps[0] < cutoff:
-        timestamps.popleft()
-    return len(timestamps) > SPAM_MESSAGE_LIMIT
+URL_PATTERN = re.compile(r"(?:https?://|www\.)\S+", re.IGNORECASE)
 
 def is_mention_spam(message: discord.Message) -> bool:
     """Return True if the message contains too many mentions."""
     return len(message.mentions) + len(message.role_mentions) > MENTION_LIMIT
+
+def get_spam_reason(message: discord.Message):
+    """Return a reason string when a message crosses any spam threshold."""
+    if message.guild is None:
+        return None
+    key = (message.author.id, message.guild.id)
+    now = time.monotonic()
+
+    # One ongoing burst should cause one action, not a warning for every message.
+    last_action = spam_action_tracker.get(key)
+    if last_action is not None and now - last_action < SPAM_ACTION_COOLDOWN:
+        return None
+
+    if is_mention_spam(message):
+        spam_action_tracker[key] = now
+        return "mass mentions"
+
+    timestamps = message_tracker[key]
+    timestamps.append(now)
+    while timestamps and timestamps[0] < now - SPAM_TIME_WINDOW:
+        timestamps.popleft()
+    if len(timestamps) > SPAM_MESSAGE_LIMIT:
+        spam_action_tracker[key] = now
+        return "message rate limit"
+
+    normalized = " ".join(message.content.casefold().split())
+    if normalized:
+        repeats = repeat_tracker[key]
+        repeats.append((now, normalized))
+        while repeats and repeats[0][0] < now - REPEAT_TIME_WINDOW:
+            repeats.popleft()
+        if sum(text == normalized for _, text in repeats) >= REPEAT_MESSAGE_LIMIT:
+            spam_action_tracker[key] = now
+            return "repeated identical messages"
+
+    links_in_message = len(URL_PATTERN.findall(message.content))
+    if links_in_message >= LINKS_PER_MESSAGE_LIMIT:
+        spam_action_tracker[key] = now
+        return "multiple links in one message"
+    if links_in_message:
+        links = link_tracker[key]
+        links.append(now)
+        while links and links[0] < now - LINK_TIME_WINDOW:
+            links.popleft()
+        if len(links) >= LINK_MESSAGE_LIMIT:
+            spam_action_tracker[key] = now
+            return "link flood"
+
+    return None
 
 # ---- BOT SETUP ----
 
@@ -379,8 +521,16 @@ async def on_guild_join(guild):
     embed.add_field(
         name="🚨 Raid Protection *(off by default)*",
         value=(
-            "Alerts you and the server owner if a large wave of members joins in a short window.\n"
+            "Alerts moderators and the server owner about join bursts, including how many new accounts are under 7 days old.\n"
             "Enable with `/raidprotection`."
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🧾 Moderator tools",
+        value=(
+            "Set a private action-log channel with `/setmodlog` and warning expiry with `/warningexpiry` "
+            "(default: 30 days). Spam and banned-word warnings are tracked separately."
         ),
         inline=False
     )
@@ -401,68 +551,111 @@ async def on_message(message):
     if not message.author.guild_permissions.moderate_members:
         banned_words = get_naughty_words(message.guild.id)
         if banned_words and contains_banned_word(message.content, banned_words):
-            await handle_infraction(message)
+            await handle_infraction(message, offense_type="banned_word")
         elif get_spam_protection_enabled(message.guild.id):
-            if is_mention_spam(message) or is_message_spam(message.author.id, message.guild.id):
-                await handle_infraction(message, reason="spam")
+            spam_reason = get_spam_reason(message)
+            if spam_reason:
+                await handle_infraction(message, offense_type="spam", detail=spam_reason)
 
     await bot.process_commands(message)
 
-async def handle_infraction(message, reason="banned word"):
-    member = message.author
-    num_warnings = increase_and_get_warning_count(member.id, message.guild.id)
-    clean_content = (message.content[:100] + '..') if len(message.content) > 100 else message.content
-    ban_enabled = get_ban_feature_enabled(message.guild.id)
+async def send_mod_action_log(guild, member, offense_label, action, warning_count, content, detail=None):
+    channel_id = get_mod_log_channel_id(guild.id)
+    if not channel_id:
+        return
 
-    if reason == "spam":
-        violation = "spamming"
+    channel = bot.get_channel(channel_id)
+    if channel is None:
+        try:
+            channel = await bot.fetch_channel(channel_id)
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException) as error:
+            print(f"[Mod Log] Could not fetch configured channel {channel_id}: {error}")
+            return
+    if not isinstance(channel, discord.TextChannel) or channel.guild.id != guild.id:
+        print(f"[Mod Log] Configured mod-log channel {channel_id} is unavailable in guild {guild.id}.")
+        return
+
+    embed = discord.Embed(
+        title=f"Moderation action: {action}",
+        color=discord.Color.orange(),
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
+    )
+    embed.add_field(name="Member", value=f"{member} (`{member.id}`)", inline=False)
+    embed.add_field(name="Reason", value=offense_label, inline=True)
+    embed.add_field(name="Warnings", value=str(warning_count), inline=True)
+    if detail:
+        embed.add_field(name="Detection", value=detail[:256], inline=False)
+    if content:
+        embed.add_field(name="Message", value=content[:1000], inline=False)
+    try:
+        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+    except (discord.Forbidden, discord.HTTPException) as error:
+        print(f"[Mod Log] Could not post to channel {channel_id}: {error}")
+
+async def handle_infraction(message, offense_type="banned_word", detail=None):
+    member = message.author
+    guild = message.guild
+    if guild is None:
+        return
+
+    expiry_days = get_warning_expiry_days(guild.id)
+    num_warnings = increase_and_get_warning_count(
+        member.id, guild.id, offense_type, expiry_days
+    )
+    clean_content = (message.content[:100] + '..') if len(message.content) > 100 else message.content
+    ban_enabled = get_ban_feature_enabled(guild.id)
+
+    if offense_type == "spam":
+        offense_label = "Spam"
         dm_warn    = "Please do not spam. You have been warned. One more time and you'll be timed out for an hour."
         dm_1hr     = "You have been timed out for an hour for spamming. One more time and you'll be timed out for 2 hours."
         pub_warn   = f"{member.mention} Please do not spam."
         pub_1hr    = f"{member.mention} has been timed out for an hour for spamming."
         pub_2hr    = f"{member.mention} has been timed out for 2 hours for spamming."
         pub_ban    = f"🔨 {member.mention} has been banned for repeated spamming."
-        dm_ban     = f"You have been **banned** from **{message.guild.name}** for repeated spamming."
+        dm_ban     = f"You have been **banned** from **{guild.name}** for repeated spamming."
         ban_reason = "4th warning — repeated spamming."
         timeout_reason_3 = "3rd warning — repeated spamming"
         timeout_reason_2 = "2nd warning — spamming"
     else:
-        violation = "using banned words"
+        offense_label = "Banned-word filter"
         dm_warn    = "Please do not say naughty words. You have been warned. One more time and you'll be timed out for an hour."
         dm_1hr     = "You have been timed out for an hour for saying too many naughty words. One more time and you'll be timed out for 2 hours."
         pub_warn   = f"{member.mention} Please do not say naughty words."
         pub_1hr    = f"{member.mention} has been timed out for an hour for saying too many naughty words."
         pub_2hr    = f"{member.mention} has been timed out for 2 hours for saying too many naughty words."
         pub_ban    = f"🔨 {member.mention} has been banned for repeatedly using banned words."
-        dm_ban     = f"You have been **banned** from **{message.guild.name}** for repeatedly using banned words."
+        dm_ban     = f"You have been **banned** from **{guild.name}** for repeatedly using banned words."
         ban_reason = "4th warning — repeated use of banned words."
         timeout_reason_3 = "3rd warning — exceeded naughty word limit"
         timeout_reason_2 = "Second naughty word warning"
 
     if num_warnings >= 4 and ban_enabled:
-        log_infraction(member.id, str(member), message.guild.id, "Ban (4th warning)", clean_content)
+        action = "Ban (4th warning)"
         try:
             await message.delete()
             try:
                 await member.send(dm_ban)
             except discord.Forbidden:
                 pass
-            await message.guild.ban(member, reason=ban_reason)
+            await guild.ban(member, reason=ban_reason)
             await message.channel.send(pub_ban)
         except discord.Forbidden:
+            action = "Ban failed (permission issue)"
             await message.channel.send(
                 f"⚠️ I was unable to ban {member.mention}. "
                 f"Please make sure my role is placed **above** all other roles in **Server Settings > Roles**."
             )
 
     elif num_warnings >= 3:
-        log_infraction(member.id, str(member), message.guild.id, "Timeout (2hr)", clean_content)
+        action = "Timeout (2hr)"
         try:
             await member.timeout(datetime.timedelta(minutes=120), reason=timeout_reason_3)
             ban_notice = " This is your final warning — one more and you will be **banned**." if ban_enabled else ""
             await message.channel.send(f"{pub_2hr}{ban_notice}")
             await message.delete()
         except discord.Forbidden:
+            action = "Timeout failed (permission issue)"
             await message.channel.send(
                 f"⚠️ I was unable to timeout {member.mention}. "
                 f"Please make sure my role is placed **above** all other roles in **Server Settings > Roles**. "
@@ -470,7 +663,7 @@ async def handle_infraction(message, reason="banned word"):
             )
 
     elif num_warnings == 2:
-        log_infraction(member.id, str(member), message.guild.id, "Timeout (1hr)", clean_content)
+        action = "Timeout (1hr)"
         try:
             await member.timeout(datetime.timedelta(minutes=60), reason=timeout_reason_2)
             try:
@@ -480,6 +673,7 @@ async def handle_infraction(message, reason="banned word"):
             await message.channel.send(pub_1hr)
             await message.delete()
         except discord.Forbidden:
+            action = "Timeout failed (permission issue)"
             await message.channel.send(
                 f"⚠️ I was unable to timeout {member.mention}. "
                 f"Please make sure my role is placed **above** all other roles in **Server Settings > Roles**. "
@@ -487,7 +681,7 @@ async def handle_infraction(message, reason="banned word"):
             )
 
     else:  # 1st warning
-        log_infraction(member.id, str(member), message.guild.id, "Warning #1", clean_content)
+        action = "Warning #1"
         try:
             await member.send(dm_warn)
         except discord.Forbidden:
@@ -495,38 +689,67 @@ async def handle_infraction(message, reason="banned word"):
         await message.channel.send(pub_warn)
         await message.delete()
 
+    infraction_type = f"{offense_label}: {action}"
+    log_infraction(member.id, str(member), guild.id, infraction_type, clean_content)
+    await send_mod_action_log(
+        guild, member, offense_label, action, num_warnings, clean_content, detail
+    )
+
 @bot.event
 async def on_member_join(member):
     guild = member.guild
     if not get_raid_protection_enabled(guild.id):
         return
 
-    now = time.time()
+    now = time.monotonic()
     joins = join_tracker[guild.id]
-    joins.append(now)
+    account_age = datetime.datetime.now(datetime.timezone.utc) - member.created_at
+    joins.append((now, account_age.total_seconds() / 86400))
     cutoff = now - RAID_TIME_WINDOW
-    while joins and joins[0] < cutoff:
+    while joins and joins[0][0] < cutoff:
         joins.popleft()
 
     if len(joins) >= RAID_JOIN_LIMIT:
-        joins.clear()  # Reset to avoid repeated alerts for the same wave
+        recent_join_count = len(joins)
+        new_account_count = sum(age_days < NEW_ACCOUNT_DAYS for _, age_days in joins)
+        joins.clear()  # Avoid repeating alerts for the same join wave
         embed = discord.Embed(
             title="⚠️ Potential Raid Detected!",
             description=(
-                f"**{RAID_JOIN_LIMIT}+ members joined within {RAID_TIME_WINDOW} seconds.**\n"
-                "Please review recent joins and take action if necessary."
+                f"**{recent_join_count} members joined within {RAID_TIME_WINDOW} seconds.**\n"
+                f"**{new_account_count}** of those accounts are less than {NEW_ACCOUNT_DAYS} days old.\n"
+                "Review recent joins and take action if necessary; no members were automatically punished."
             ),
             color=discord.Color.red()
         )
-        channel = get_target_channel(guild)
-        if channel:
-            await channel.send(embed=embed)
+        log_channel_id = get_mod_log_channel_id(guild.id)
+        if log_channel_id:
+            channel = bot.get_channel(log_channel_id)
+            if channel is None:
+                try:
+                    channel = await bot.fetch_channel(log_channel_id)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException) as error:
+                    print(f"[Raid Alert] Could not fetch configured mod-log channel: {error}")
+                    channel = None
+            if isinstance(channel, discord.TextChannel) and channel.guild.id == guild.id:
+                try:
+                    await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions.none())
+                except (discord.Forbidden, discord.HTTPException) as error:
+                    print(f"[Raid Alert] Could not send to configured mod-log channel: {error}")
+        else:
+            channel = get_target_channel(guild)
+            if channel:
+                try:
+                    await channel.send(embed=embed)
+                except (discord.Forbidden, discord.HTTPException) as error:
+                    print(f"[Raid Alert] Could not send alert in {guild.name}: {error}")
         if guild.owner:
             try:
                 await guild.owner.send(
                     f"⚠️ **Raid alert for {guild.name}!**\n"
-                    f"{RAID_JOIN_LIMIT}+ members joined within {RAID_TIME_WINDOW} seconds. "
-                    "Please check your server immediately."
+                    f"{recent_join_count} members joined within {RAID_TIME_WINDOW} seconds; "
+                    f"{new_account_count} accounts are less than {NEW_ACCOUNT_DAYS} days old. "
+                    "Please review your server."
                 )
             except discord.Forbidden:
                 pass
@@ -544,8 +767,7 @@ async def announce(ctx):
     embed.add_field(
         name="🛡️ Spam Protection *(new)*",
         value=(
-            "Automatically warns and times out users who send too many messages too quickly "
-            "or mass-mention members.\n"
+            "Detects rapid messages, repeated identical messages, mass mentions, and link floods.\n"
             "**Off by default** — enable with `/spamprotection`."
         ),
         inline=False
@@ -553,8 +775,16 @@ async def announce(ctx):
     embed.add_field(
         name="🚨 Raid Protection *(new)*",
         value=(
-            "Alerts moderators and the server owner when a large wave of members joins in a short window.\n"
+            "Alerts moderators and the server owner about join bursts and how many joining accounts are under 7 days old.\n"
             "**Off by default** — enable with `/raidprotection`."
+        ),
+        inline=False
+    )
+    embed.add_field(
+        name="🧾 Moderation controls",
+        value=(
+            "Spam and banned-word warnings are tracked separately. Warnings expire after 30 days by default "
+            "(configure with `/warningexpiry`). Configure a private action-log channel with `/setmodlog`."
         ),
         inline=False
     )
@@ -792,10 +1022,33 @@ async def slash_clearwarnings(interaction: discord.Interaction, member: discord.
         return
     conn = sqlite3.connect(os.path.join(Base_dir, "users_warning.db"))
     cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM warning_counts WHERE user_id = ? AND guild_id = ?",
+        (member.id, interaction.guild.id)
+    )
+    # Retain cleanup of the legacy row after its values have been migrated.
     cursor.execute("DELETE FROM users_per_guild WHERE user_id = ? AND guild_id = ?", (member.id, interaction.guild.id))
     conn.commit()
     conn.close()
     await interaction.response.send_message(f"Warnings for {member.mention} have been cleared.")
+
+@bot.tree.command(name="warnings", description="View a member's active warning counts by category")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_warnings(interaction: discord.Interaction, member: discord.Member):
+    if interaction.guild is None:
+        return
+    expiry_days = get_warning_expiry_days(interaction.guild.id)
+    spam_count = get_warning_count(member.id, interaction.guild.id, "spam", expiry_days)
+    word_count = get_warning_count(member.id, interaction.guild.id, "banned_word", expiry_days)
+    expiry_text = f"{expiry_days} days" if expiry_days else "never"
+    embed = discord.Embed(
+        title=f"Active warnings for {member.display_name}",
+        color=discord.Color.orange()
+    )
+    embed.add_field(name="Spam", value=str(spam_count), inline=True)
+    embed.add_field(name="Banned words", value=str(word_count), inline=True)
+    embed.set_footer(text=f"Warnings expire after {expiry_text} without a new warning.")
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name="logs", description="View recent infractions for a user (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -818,6 +1071,41 @@ async def slash_logs(interaction: discord.Interaction, member: discord.Member):
     for infraction_type, content, time in rows:
         log_text += f"• `[{time[:19]}]` **{infraction_type}**: \"{content}\"\n"
     await interaction.response.send_message(log_text)
+
+@bot.tree.command(name="setmodlog", description="Set or clear this server's private moderation-log channel")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_setmodlog(
+    interaction: discord.Interaction,
+    channel: discord.TextChannel | None = None
+):
+    if interaction.guild is None:
+        return
+    set_mod_log_channel_id(interaction.guild.id, channel.id if channel else None)
+    if channel:
+        await interaction.response.send_message(
+            f"Moderation actions and raid alerts will be sent to {channel.mention}.",
+            ephemeral=True
+        )
+    else:
+        await interaction.response.send_message(
+            "Private moderation logging is disabled. Use `/setmodlog` with a channel to enable it.",
+            ephemeral=True
+        )
+
+@bot.tree.command(name="warningexpiry", description="Set how long warnings remain active (Moderators only)")
+@app_commands.checks.has_permissions(moderate_members=True)
+async def slash_warningexpiry(
+    interaction: discord.Interaction,
+    days: app_commands.Range[int, 0, 365]
+):
+    if interaction.guild is None:
+        return
+    set_warning_expiry_days(interaction.guild.id, days)
+    if days == 0:
+        response = "Warning expiry is disabled; warnings will not expire automatically."
+    else:
+        response = f"Warnings now expire after **{days} days** without another warning of that category."
+    await interaction.response.send_message(response, ephemeral=True)
 
 @bot.tree.command(name="spamprotection", description="Toggle spam protection on or off (Moderators only)")
 @app_commands.checks.has_permissions(moderate_members=True)
@@ -869,12 +1157,14 @@ async def slash_support(interaction: discord.Interaction):
 async def slash_about(interaction: discord.Interaction):
     await interaction.response.send_message(
         "**Moderation Bot**\n"
-        "This bot helps moderate the server by filtering banned words and issuing warnings to users who use them.\n\n"
+        "This bot filters banned words, detects spam and helps moderators identify possible raids.\n\n"
         "**How it works:**\n"
         "- If a user says a banned word, they get a warning.\n"
         "- 2nd warning = 1 hour timeout.\n"
         "- 3rd warning = 2 hour timeout.\n"
         "- 4th warning = Ban *(optional, off by default — Moderators can enable it with `/banfeature`)*\n\n"
+        "Spam and banned-word warnings have separate counts and expire after 30 days by default. "
+        "Moderators can change expiry with `/warningexpiry` and configure a private action-log channel with `/setmodlog`.\n\n"
         "Use `/commands` to see the full list of commands."
     )
 
@@ -887,11 +1177,14 @@ async def slash_list_commands(interaction: discord.Interaction):
         "`/addword <word>` - Add a banned word (Moderators only)\n"
         "`/removeword <word>` - Remove a banned word (Moderators only)\n"
         "`/listwords` - See all banned words (Moderators only)\n"
+        "`/warnings <member>` - View active warning counts by category (Moderators only)\n"
         "`/clearwarnings <member>` - Clear a user's warnings (Moderators only)\n"
         "`/logs <member>` - View a user's infractions (Moderators only)\n"
         "`/banfeature` - Toggle the 4th warning ban on or off (Moderators only)\n"
-        "`/spamprotection` - Toggle message & mention spam protection (Moderators only)\n"
+        "`/spamprotection` - Toggle message, repeat, mention & link-spam protection (Moderators only)\n"
         "`/raidprotection` - Toggle raid join alerts (Moderators only)\n"
+        "`/setmodlog <channel>` - Configure private moderation and raid logs (Moderators only; omit channel to clear)\n"
+        "`/warningexpiry <days>` - Set warning expiry from 0 to 365 days; 0 disables expiry (Moderators only)\n"
         "`/support` - Support Mod Bot's development\n"
     )
 
